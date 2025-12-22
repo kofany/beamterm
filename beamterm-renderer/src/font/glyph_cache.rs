@@ -41,6 +41,7 @@ pub struct GlyphRender {
 /// This cache stores glyph render information to avoid re-rasterizing
 /// the same glyph multiple times. The cache maps (symbol, style) pairs
 /// to their assigned glyph IDs.
+#[derive(Debug)]
 pub struct GlyphCache {
     cache: HashMap<GlyphKey, GlyphRender>,
 }

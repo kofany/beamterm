@@ -2,13 +2,22 @@ use std::{
     borrow::Cow,
     cell::RefCell,
     collections::{HashMap, HashSet},
+    rc::Rc,
 };
 
 use beamterm_data::{FontAtlasData, FontStyle, Glyph};
 use compact_str::{CompactString, ToCompactString};
 use web_sys::console;
 
-use crate::{error::Error, gl::GL};
+use crate::error::Error;
+use crate::font::{
+    glyph_bounds::GlyphBounds,
+    glyph_cache::{GlyphCache, GlyphKey, GlyphRender},
+    glyph_rasterizer::GlyphRasterizer,
+    runtime_font_system::RuntimeFontSystem,
+};
+
+use super::GL;
 
 /// A texture atlas containing font glyphs for efficient WebGL text rendering.
 ///
@@ -22,6 +31,10 @@ use crate::{error::Error, gl::GL};
 /// - ASCII characters use their ASCII value as the layer index
 /// - Non-ASCII characters are stored in a hash map for layer lookup
 /// - All glyphs have uniform cell dimensions for consistent spacing
+///
+/// # Dynamic vs Static Atlas
+/// - Static atlas: Loaded from pre-generated FontAtlasData (existing behavior)
+/// - Dynamic atlas: Rasterizes glyphs on-demand using RuntimeFontSystem
 #[derive(Debug)]
 pub struct FontAtlas {
     /// The underlying texture
@@ -42,6 +55,21 @@ pub struct FontAtlas {
     glyph_tracker: GlyphTracker,
     /// The last assigned halfwidth base glyph ID, before fullwidth
     last_halfwidth_base_glyph_id: u32,
+    /// Dynamic rendering state (None for static atlas)
+    dynamic_state: Option<DynamicAtlasState>,
+}
+
+/// State for dynamic atlas rendering
+#[derive(Debug)]
+struct DynamicAtlasState {
+    /// Font system for runtime glyph rasterization
+    font_system: Rc<RefCell<RuntimeFontSystem>>,
+    /// Cache for rendered glyphs
+    glyph_cache: GlyphCache,
+    /// Next available glyph ID for allocation (base ID, without style flags)
+    next_glyph_id: u32,
+    /// Glyph bounds (cell dimensions)
+    glyph_bounds: GlyphBounds,
 }
 
 impl FontAtlas {
@@ -94,7 +122,135 @@ impl FontAtlas {
             underline: config.underline,
             strikethrough: config.strikethrough,
             glyph_tracker: GlyphTracker::new(),
+            dynamic_state: None, // Static atlas
         })
+    }
+
+    /// Creates a new dynamic font atlas that rasterizes glyphs on-demand.
+    ///
+    /// # Arguments
+    /// * `gl` - WebGL2 context
+    /// * `font_system` - Runtime font system for glyph rasterization
+    /// * `font_size` - Font size in pixels
+    /// * `line_height` - Line height multiplier (e.g., 1.2)
+    ///
+    /// # Returns
+    /// A new `FontAtlas` configured for dynamic rendering
+    pub fn new_dynamic(
+        gl: &web_sys::WebGl2RenderingContext,
+        font_system: Rc<RefCell<RuntimeFontSystem>>,
+        font_size: f32,
+        line_height: f32,
+    ) -> Result<Self, Error> {
+        // Calculate glyph bounds by measuring a block character
+        let glyph_bounds = Self::calculate_glyph_bounds(font_system.clone(), font_size, line_height)?;
+
+        // Calculate texture dimensions
+        // Each layer contains 32 glyphs (1 column x 32 rows)
+        const GLYPHS_PER_SLICE: i32 = 32;
+        const GRID_WIDTH: i32 = 1;
+        const GRID_HEIGHT: i32 = 32;
+
+        let cell_width = glyph_bounds.width_with_padding();
+        let cell_height = glyph_bounds.height_with_padding();
+
+        let slice_width = GRID_WIDTH * cell_width;
+        let slice_height = GRID_HEIGHT * cell_height;
+
+        // Initial texture size: 32 layers (1024 glyphs capacity)
+        let initial_layers = 32;
+        let texture_width = slice_width;
+        let texture_height = slice_height;
+
+        // Create empty texture
+        let texture = crate::gl::texture::Texture::new_empty(
+            gl,
+            GL::RGBA,
+            texture_width,
+            texture_height,
+            initial_layers,
+        )?;
+
+        // Start allocating glyph IDs after ASCII range (0x80)
+        // This leaves 0x00-0x7F for ASCII direct mapping
+        let next_glyph_id = 0x80;
+
+        // Calculate underline and strikethrough positions (simplified, can be improved)
+        let underline = beamterm_data::LineDecoration {
+            position: 0.8, // 80% of cell height
+            thickness: 1.0,
+        };
+        let strikethrough = beamterm_data::LineDecoration {
+            position: 0.5, // 50% of cell height
+            thickness: 1.0,
+        };
+
+        Ok(Self {
+            texture,
+            glyph_coords: HashMap::new(),
+            symbol_lookup: HashMap::new(),
+            cell_size: (cell_width, cell_height),
+            num_slices: initial_layers as u32,
+            underline,
+            strikethrough,
+            glyph_tracker: GlyphTracker::new(),
+            last_halfwidth_base_glyph_id: next_glyph_id - 1, // Will be updated as glyphs are added
+            dynamic_state: Some(DynamicAtlasState {
+                font_system,
+                glyph_cache: GlyphCache::new(),
+                next_glyph_id,
+                glyph_bounds,
+            }),
+        })
+    }
+
+    /// Calculates glyph bounds by rasterizing a block character (U+2588).
+    ///
+    /// This provides a simple estimate of cell dimensions. For optimal results,
+    /// use the full optimization from beamterm-atlas, but for dynamic atlas
+    /// this is sufficient for initial implementation.
+    fn calculate_glyph_bounds(
+        font_system: Rc<RefCell<RuntimeFontSystem>>,
+        font_size: f32,
+        line_height: f32,
+    ) -> Result<GlyphBounds, Error> {
+        use cosmic_text::Metrics;
+
+        let mut font_system_borrow = font_system.borrow_mut();
+        let metrics = Metrics::new(font_size, font_size * line_height);
+
+        // Rasterize block character to measure bounds
+        let font_family_name = font_system_borrow.font_family_name().to_string();
+        let mut rasterizer = GlyphRasterizer::new("\u{2588}") // Full block
+            .font_family_name(&font_family_name)
+            .font_style(beamterm_data::FontStyle::Normal);
+
+        // Rasterize - this borrows font_system mutably
+        let mut buffer = rasterizer.rasterize(font_system_borrow.font_system_mut(), metrics)?;
+        
+        // Drop the first borrow so we can borrow again
+        drop(font_system_borrow);
+        
+        // Now borrow the entire RuntimeFontSystem again
+        // SAFETY: We need to borrow font_system for buffer.borrow_with() AND cache for measure_glyph_bounds.
+        // These are separate fields, so it's safe to use unsafe to get both references.
+        let mut font_system_borrow2 = font_system.borrow_mut();
+        
+        // Get raw pointers to both fields
+        let font_system_ptr: *mut cosmic_text::FontSystem = &mut font_system_borrow2.font_system;
+        let cache_ptr: *mut cosmic_text::SwashCache = &mut font_system_borrow2.cache;
+        
+        // Now we can use both through raw pointers
+        let mut buffer_borrowed = buffer.borrow_with(unsafe { &mut *font_system_ptr });
+        let bounds = crate::font::glyph_bounds::measure_glyph_bounds(
+            &mut buffer_borrowed,
+            unsafe { &mut *cache_ptr },
+        );
+        
+        // Explicitly drop buffer_borrowed before font_system_borrow2 goes out of scope
+        drop(buffer_borrowed);
+
+        Ok(bounds)
     }
 
     /// Binds the atlas texture to the specified texture unit

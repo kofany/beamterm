@@ -7,6 +7,7 @@ use crate::error::Error;
 /// This manages the cosmic-text FontSystem and SwashCache needed for
 /// runtime glyph rendering. It handles font loading and provides
 /// the necessary components for glyph rasterization.
+#[derive(Debug)]
 pub struct RuntimeFontSystem {
     /// The cosmic-text font system for font loading and text shaping
     pub(crate) font_system: FontSystem,

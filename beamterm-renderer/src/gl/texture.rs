@@ -41,6 +41,46 @@ impl Texture {
         Ok(Self { gl_texture, format })
     }
 
+    /// Creates an empty texture for dynamic atlas.
+    ///
+    /// # Arguments
+    /// * `gl` - WebGL2 context
+    /// * `format` - Texture format (typically GL::RGBA)
+    /// * `width` - Texture width in pixels
+    /// * `height` - Texture height in pixels
+    /// * `layers` - Number of texture layers (depth)
+    pub(super) fn new_empty(
+        gl: &web_sys::WebGl2RenderingContext,
+        format: u32,
+        width: i32,
+        height: i32,
+        layers: i32,
+    ) -> Result<Self, Error> {
+        let gl_texture = gl
+            .create_texture()
+            .ok_or(Error::texture_creation_failed())?;
+        gl.bind_texture(GL::TEXTURE_2D_ARRAY, Some(&gl_texture));
+        gl.tex_storage_3d(GL::TEXTURE_2D_ARRAY, 1, GL::RGBA8, width, height, layers);
+
+        // Initialize with empty (transparent) data
+        let empty_data = vec![0u8; (width * height * layers * 4) as usize];
+        #[rustfmt::skip]
+        gl.tex_sub_image_3d_with_opt_u8_array_and_src_offset(
+            GL::TEXTURE_2D_ARRAY,
+            0, // level
+            0, 0, 0, // offset
+            width, height, layers, // texture size
+            GL::RGBA,
+            GL::UNSIGNED_BYTE,
+            Some(&empty_data),
+            0 // src offset
+        ).map_err(|_| Error::texture_creation_failed())?;
+
+        Self::setup_mipmap(gl);
+
+        Ok(Self { gl_texture, format })
+    }
+
     pub fn bind(&self, gl: &web_sys::WebGl2RenderingContext, texture_unit: u32) {
         // bind texture and set uniform
         gl.active_texture(GL::TEXTURE0 + texture_unit);
