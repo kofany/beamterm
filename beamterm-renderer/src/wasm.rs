@@ -401,18 +401,82 @@ impl Cell {
 
 #[wasm_bindgen]
 impl BeamtermRenderer {
-    /// Create a new terminal renderer
+    /// Create a new terminal renderer with default static font atlas
     #[wasm_bindgen(constructor)]
     pub fn new(canvas_id: &str) -> Result<BeamtermRenderer, JsValue> {
+        Self::new_with_font(canvas_id, None, None, None)
+    }
+
+    /// Create a new terminal renderer with dynamic font atlas
+    ///
+    /// # Arguments
+    /// * `canvas_id` - CSS selector for the canvas element (e.g., "#terminal-canvas")
+    /// * `font_family` - Optional font family name (e.g., "JetBrains Mono Nerd Font"). If None, uses default embedded font.
+    /// * `font_size` - Optional font size in points (default: 14.0)
+    /// * `line_height` - Optional line height multiplier (default: 1.2)
+    ///
+    /// # Examples
+    ///
+    /// ```javascript
+    /// // Use default embedded font with default size
+    /// const renderer = new BeamtermRenderer('#canvas', null, null, null);
+    ///
+    /// // Use default font with custom size
+    /// const renderer = new BeamtermRenderer('#canvas', null, 16.0, 1.2);
+    ///
+    /// // Use custom font
+    /// const renderer = new BeamtermRenderer('#canvas', 'Fira Code', 14.0, 1.2);
+    /// ```
+    #[wasm_bindgen(js_name = "newWithFont")]
+    pub fn new_with_font(
+        canvas_id: &str,
+        font_family: Option<String>,
+        font_size: Option<f32>,
+        line_height: Option<f32>,
+    ) -> Result<BeamtermRenderer, JsValue> {
         console_error_panic_hook::set_once();
 
         let renderer = Renderer::create(canvas_id)
             .map_err(|e| JsValue::from_str(&format!("Failed to create renderer: {e}")))?;
 
         let gl = renderer.gl();
-        let atlas_data = FontAtlasData::default();
-        let atlas = FontAtlas::load(gl, atlas_data)
-            .map_err(|e| JsValue::from_str(&format!("Failed to load font atlas: {e}")))?;
+        
+        // Create atlas (static or dynamic)
+        let atlas = if font_family.is_some() || font_size.is_some() || line_height.is_some() {
+            // Dynamic font atlas
+            let font_family = font_family.unwrap_or_else(|| "JetBrains Mono Nerd Font".to_string());
+            let font_size = font_size.unwrap_or(14.0);
+            let line_height = line_height.unwrap_or(1.2);
+
+            use crate::font::{default_font, runtime_font_system::RuntimeFontSystem};
+            use std::rc::Rc;
+            use std::cell::RefCell;
+
+            let mut font_system = RuntimeFontSystem::new(
+                font_family.clone(),
+                "Noto Color Emoji".to_string(),
+                font_size,
+                line_height,
+            ).map_err(|e| JsValue::from_str(&format!("Failed to create font system: {e}")))?;
+
+            // Load default embedded font if using default font family
+            if font_family == "JetBrains Mono Nerd Font" {
+                default_font::load_default_font(font_system.font_system_mut())
+                    .map_err(|e| JsValue::from_str(&format!("Failed to load default font: {}", e)))?;
+            }
+
+            FontAtlas::new_dynamic(
+                gl,
+                Rc::new(RefCell::new(font_system)),
+                font_size,
+                line_height,
+            ).map_err(|e| JsValue::from_str(&format!("Failed to create dynamic atlas: {e}")))?
+        } else {
+            // Static atlas (default)
+            let atlas_data = FontAtlasData::default();
+            FontAtlas::load(gl, atlas_data)
+                .map_err(|e| JsValue::from_str(&format!("Failed to load font atlas: {e}")))?
+        };
 
         let canvas_size = renderer.canvas_size();
         let terminal_grid = TerminalGrid::new(gl, atlas, canvas_size)
