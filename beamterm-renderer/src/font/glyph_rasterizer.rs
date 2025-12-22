@@ -49,9 +49,13 @@ impl<'a> GlyphRasterizer<'a> {
         font_system: &mut FontSystem,
         metrics: Metrics,
     ) -> Result<Buffer, Error> {
+        use web_sys::console;
+        
         let font_family_name = self
             .font_family_name
             .ok_or_else(|| Error::Data("font family name must be set before rasterizing".to_string()))?;
+
+        console::log_1(&format!("[beamterm] GlyphRasterizer::rasterize: symbol='{}', font_family='{}'", self.symbol, font_family_name).into());
 
         let mut buffer = Buffer::new(font_system, metrics);
         let (width, height) = self.buffer_size.unwrap_or((200.0, 200.0));
@@ -66,6 +70,13 @@ impl<'a> GlyphRasterizer<'a> {
             cosmic_text::Shaping::Advanced,
         );
         buffer.shape_until_scroll(font_system, true);
+        
+        let layout_runs = buffer.layout_runs();
+        let run_count: usize = layout_runs.count();
+        console::log_1(&format!("[beamterm] Rasterized glyph '{}', layout_runs count: {}", self.symbol, run_count).into());
+        if run_count == 0 {
+            console::error_1(&format!("[beamterm] Warning: No layout runs after rasterization for '{}' - font may not be found!", self.symbol).into());
+        }
 
         Ok(buffer)
     }

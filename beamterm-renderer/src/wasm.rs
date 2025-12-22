@@ -179,28 +179,28 @@ impl CellStyle {
     /// Add bold style
     #[wasm_bindgen]
     pub fn bold(mut self) -> CellStyle {
-        self.style_bits |= Glyph::BOLD_FLAG;
+        self.style_bits |= Glyph::BOLD_FLAG as u16;
         self
     }
 
     /// Add italic style
     #[wasm_bindgen]
     pub fn italic(mut self) -> CellStyle {
-        self.style_bits |= Glyph::ITALIC_FLAG;
+        self.style_bits |= Glyph::ITALIC_FLAG as u16;
         self
     }
 
     /// Add underline effect
     #[wasm_bindgen]
     pub fn underline(mut self) -> CellStyle {
-        self.style_bits |= Glyph::UNDERLINE_FLAG;
+        self.style_bits |= Glyph::UNDERLINE_FLAG as u16;
         self
     }
 
     /// Add strikethrough effect
     #[wasm_bindgen]
     pub fn strikethrough(mut self) -> CellStyle {
-        self.style_bits |= Glyph::STRIKETHROUGH_FLAG;
+        self.style_bits |= Glyph::STRIKETHROUGH_FLAG as u16;
         self
     }
 
@@ -228,7 +228,7 @@ impl Batch {
     pub fn cell(&mut self, x: u16, y: u16, cell_data: &Cell) {
         self.terminal_grid
             .borrow_mut()
-            .update_cell(x, y, cell_data.as_cell_data());
+            .update_cell(Some(&self.gl), x, y, cell_data.as_cell_data());
     }
 
     /// Updates a cell by its buffer index.
@@ -236,7 +236,7 @@ impl Batch {
     pub fn cell_by_index(&mut self, idx: usize, cell_data: &Cell) {
         self.terminal_grid
             .borrow_mut()
-            .update_cell_by_index(idx, cell_data.as_cell_data());
+            .update_cell_by_index(Some(&self.gl), idx, cell_data.as_cell_data());
     }
 
     /// Updates multiple cells from an array.
@@ -278,8 +278,8 @@ impl Batch {
                 break;
             }
 
-            let cell = CellData::new_with_style_bits(ch, style.style_bits, style.fg, style.bg);
-            terminal_grid.update_cell(current_col, y, cell);
+            let cell = CellData::new_with_style_bits(ch, style.style_bits as u32, style.fg, style.bg);
+            terminal_grid.update_cell(None, current_col, y, cell);
 
             if emojis::get(ch).is_some() {
                 width_offset += 1;
@@ -308,7 +308,7 @@ impl Batch {
         let fill_cell = cell_data.as_cell_data();
         for y in y..y + height {
             for x in x..x + width {
-                terminal_grid.update_cell(x, y, fill_cell);
+                terminal_grid.update_cell(None, x, y, fill_cell);
             }
         }
 
@@ -322,9 +322,11 @@ impl Batch {
         let (cols, rows) = terminal_grid.terminal_size();
 
         let clear_cell = CellData::new_with_style_bits(" ", 0, 0xFFFFFF, bg);
+        // Get gl from renderer - we need it for dynamic rendering
+        // For now, clear doesn't need dynamic rendering (it's just a space)
         for y in 0..rows {
             for x in 0..cols {
-                terminal_grid.update_cell(x, y, clear_cell);
+                terminal_grid.update_cell(None, x, y, clear_cell);
             }
         }
 
@@ -395,7 +397,7 @@ impl Cell {
 
 impl Cell {
     pub fn as_cell_data(&self) -> CellData<'_> {
-        CellData::new_with_style_bits(&self.symbol, self.style, self.fg, self.bg)
+        CellData::new_with_style_bits(&self.symbol, self.style as u32, self.fg, self.bg)
     }
 }
 
@@ -461,8 +463,18 @@ impl BeamtermRenderer {
 
             // Load default embedded font if using default font family
             if font_family == "JetBrains Mono Nerd Font" {
-                default_font::load_default_font(font_system.font_system_mut())
-                    .map_err(|e| JsValue::from_str(&format!("Failed to load default font: {}", e)))?;
+                console::log_1(&"[beamterm] Attempting to load default embedded font".into());
+                match default_font::load_default_font(font_system.font_system_mut()) {
+                    Ok(loaded_family) => {
+                        console::log_1(&format!("[beamterm] Default font loaded successfully: {}", loaded_family).into());
+                    }
+                    Err(e) => {
+                        console::error_1(&format!("[beamterm] Failed to load default font: {}", e).into());
+                        return Err(JsValue::from_str(&format!("Failed to load default font: {}", e)));
+                    }
+                }
+            } else {
+                console::log_1(&format!("[beamterm] Using custom font family: {}", font_family).into());
             }
 
             FontAtlas::new_dynamic(
@@ -618,6 +630,12 @@ impl BeamtermRenderer {
     pub fn cell_size(&self) -> Size {
         let (width, height) = self.terminal_grid.borrow().cell_size();
         Size { width: width as u16, height: height as u16 }
+    }
+
+    /// Returns the number of glyphs currently available in the atlas (ASCII + dynamic).
+    #[wasm_bindgen(js_name = "getGlyphCount")]
+    pub fn get_glyph_count(&self) -> u32 {
+        self.terminal_grid.borrow().atlas().glyph_count()
     }
 
     /// Render the terminal to the canvas

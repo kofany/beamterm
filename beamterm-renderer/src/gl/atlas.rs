@@ -142,6 +142,7 @@ impl FontAtlas {
         font_size: f32,
         line_height: f32,
     ) -> Result<Self, Error> {
+        console::log_1(&format!("[beamterm] Creating dynamic atlas: font_size={}, line_height={}", font_size, line_height).into());
         // Calculate glyph bounds by measuring a block character
         let glyph_bounds = Self::calculate_glyph_bounds(font_system.clone(), font_size, line_height)?;
 
@@ -220,9 +221,35 @@ impl FontAtlas {
         let metrics = Metrics::new(font_size, font_size * line_height);
 
         // Rasterize block character to measure bounds
-        let font_family_name = font_system_borrow.font_family_name().to_string();
+        let requested_font_family = font_system_borrow.font_family_name().to_string();
+        console::log_1(&format!("[beamterm] calculate_glyph_bounds: requested_font_family={}, font_size={}", requested_font_family, font_size).into());
+        
+        // Check if font is available in database and find the actual name
+        let db = font_system_borrow.font_system_mut().db();
+        let available_families: Vec<String> = db.faces()
+            .flat_map(|f| f.families.iter().map(|(n, _)| n.clone()))
+            .collect();
+        console::log_1(&format!("[beamterm] Available font families in database: {:?}", available_families).into());
+        
+        // Find the actual font family name (may differ from requested)
+        let actual_font_family = db.faces()
+            .find(|face| {
+                face.families.iter().any(|(name, _)| {
+                    name.to_lowercase().contains("jetbrains")
+                })
+            })
+            .and_then(|face| {
+                face.families.first().map(|(name, _)| name.clone())
+            })
+            .unwrap_or_else(|| {
+                console::log_1(&format!("[beamterm] Warning: Could not find JetBrains font, using requested name: {}", requested_font_family).into());
+                requested_font_family.clone()
+            });
+        
+        console::log_1(&format!("[beamterm] Using actual font family for rasterization: {}", actual_font_family).into());
+        
         let mut rasterizer = GlyphRasterizer::new("\u{2588}") // Full block
-            .font_family_name(&font_family_name)
+            .font_family_name(&actual_font_family)
             .font_style(beamterm_data::FontStyle::Normal);
 
         // Rasterize - this borrows font_system mutably
@@ -307,12 +334,35 @@ impl FontAtlas {
     ) -> Option<u32> {
         // Convert style_bits to FontStyle
         let style = Self::style_bits_to_font_style(style_bits);
+        
+        // For ASCII characters in dynamic atlas, render on-demand like other characters
         if key.len() == 1 {
             let ch = key.chars().next().unwrap();
             if ch.is_ascii() {
-                // 0x00..0x7f double as layer
-                let id = ch as u32;
-                return Some(id);
+                let base_glyph_id = ch as u32;
+                
+                // For static atlas, ASCII glyphs are pre-rendered, just return the ID
+                if self.dynamic_state.is_none() {
+                    return Some(base_glyph_id);
+                }
+                
+                // For dynamic atlas, check if already rendered (in glyph_cache)
+                if let Some(ref dynamic_state) = self.dynamic_state {
+                    let cache_key = GlyphKey::new(&ch.to_string(), style);
+                    if dynamic_state.glyph_cache.get(&cache_key).is_some() {
+                        return Some(base_glyph_id);
+                    }
+                }
+                
+                // Need to render ASCII character on-demand
+                if let Some(ref gl_ctx) = gl {
+                    if let Some(glyph_id) = self.render_ascii_glyph(gl_ctx, ch, style) {
+                        return Some(glyph_id);
+                    }
+                }
+                
+                // Fallback: return the ID anyway (will show as blank)
+                return Some(base_glyph_id);
             }
         }
 
@@ -324,15 +374,62 @@ impl FontAtlas {
         // Glyph not found - try dynamic rendering if atlas is dynamic
         if let Some(ref gl_ctx) = gl {
             if self.dynamic_state.is_some() {
+                console::log_1(&format!("[beamterm] get_base_glyph_id: glyph '{}' not found, attempting dynamic render", key).into());
                 if let Some(glyph_id) = self.render_glyph_on_demand(gl_ctx, key, style) {
+                    console::log_1(&format!("[beamterm] get_base_glyph_id: dynamic render succeeded, glyph_id=0x{:X}", glyph_id).into());
                     return Some(glyph_id);
+                } else {
+                    console::error_1(&format!("[beamterm] get_base_glyph_id: dynamic render failed for '{}'", key).into());
                 }
+            } else {
+                console::log_1(&format!("[beamterm] get_base_glyph_id: glyph '{}' not found, but atlas is not dynamic", key).into());
             }
+        } else {
+            console::log_1(&format!("[beamterm] get_base_glyph_id: glyph '{}' not found, but no gl context provided", key).into());
         }
 
         // Track as missing
         self.glyph_tracker.record_missing(key);
         None
+    }
+    
+    /// Renders an ASCII glyph on-demand for dynamic atlas.
+    /// ASCII glyphs use their character code as the glyph ID (e.g., 'A' = 0x41).
+    fn render_ascii_glyph(
+        &mut self,
+        gl: &web_sys::WebGl2RenderingContext,
+        ch: char,
+        style: FontStyle,
+    ) -> Option<u32> {
+        let dynamic_state = self.dynamic_state.as_mut()?;
+        
+        let base_glyph_id = ch as u32;
+        let symbol = ch.to_string();
+        
+        // Add to cache to avoid re-rendering
+        let cache_key = GlyphKey::new(&symbol, style);
+        let cache_render = GlyphRender { glyph_id: base_glyph_id };
+        dynamic_state.glyph_cache.insert(cache_key, cache_render);
+        
+        // Rasterize and upload
+        if let Err(e) = Self::rasterize_and_upload_glyph(
+            gl,
+            &symbol,
+            style,
+            base_glyph_id,
+            &mut dynamic_state.font_system,
+            dynamic_state.glyph_bounds,
+            &self.cell_size,
+            &self.texture,
+            self.num_slices,
+            false, // not emoji
+            false, // not double width
+        ) {
+            console::error_1(&format!("[beamterm] Failed to render ASCII '{}': {:?}", ch, e).into());
+            return None;
+        }
+        
+        Some(base_glyph_id)
     }
 
     /// Renders a glyph on-demand for dynamic atlas and returns its glyph ID.
@@ -347,7 +444,7 @@ impl FontAtlas {
     ///
     /// # Returns
     /// The glyph ID (with style flags) for the rendered glyph, or None if rendering failed
-    pub fn render_glyph_on_demand(
+    pub     fn render_glyph_on_demand(
         &mut self,
         gl: &web_sys::WebGl2RenderingContext,
         symbol: &str,
@@ -356,16 +453,23 @@ impl FontAtlas {
         let dynamic_state = self.dynamic_state.as_mut()?;
 
         // Check if glyph is emoji or fullwidth
-        let is_emoji = Self::is_emoji(symbol);
+        // NOTE: Nerd Font icons are in Private Use Area but should NOT be treated as emoji!
+        let is_true_emoji = Self::is_true_emoji(symbol);  // Real emoji only
+        let is_nerd_font_icon = Self::is_nerd_font_icon(symbol);  // Nerd Font icons (PUA)
         let is_fullwidth = symbol.chars().next()
             .map(|c| unicode_width::UnicodeWidthChar::width(c) == Some(2))
             .unwrap_or(false);
-        let is_double_width = is_emoji || is_fullwidth;
+        // Only true emoji and fullwidth chars are double-width, NOT Nerd Font icons
+        let is_double_width = is_true_emoji || is_fullwidth;
+        // #region agent log
+        console::log_1(&format!("[beamterm][H1] render_glyph_on_demand: symbol='{}' (U+{:X}), is_true_emoji={}, is_nerd_font={}, is_fullwidth={}, is_double_width={}", 
+            symbol, symbol.chars().next().map(|c| c as u32).unwrap_or(0), is_true_emoji, is_nerd_font_icon, is_fullwidth, is_double_width).into());
+        // #endregion
 
         // Check cache first
         let key = GlyphKey::new(symbol, style);
         if let Some(cached) = dynamic_state.glyph_cache.get(&key) {
-            let glyph_id = if is_emoji {
+            let glyph_id = if is_true_emoji {
                 cached.glyph_id | Glyph::EMOJI_FLAG
             } else {
                 cached.glyph_id | Self::style_to_flags(style)
@@ -400,7 +504,13 @@ impl FontAtlas {
         }
 
         // Rasterize and upload glyph to texture
-        let render_style = if is_emoji { FontStyle::Normal } else { style };
+        // For true emoji: use emoji font and normal style
+        // For Nerd Font icons and regular glyphs: use main font and passed style
+        let render_style = if is_true_emoji { FontStyle::Normal } else { style };
+        // #region agent log
+        console::log_1(&format!("[beamterm][H2] rasterize: symbol='{}', is_true_emoji={}, render_style={:?}, font_will_be={}", 
+            symbol, is_true_emoji, render_style, if is_true_emoji { "emoji" } else { "main" }).into());
+        // #endregion
         if let Err(e) = Self::rasterize_and_upload_glyph(
             gl,
             symbol,
@@ -411,7 +521,7 @@ impl FontAtlas {
             &self.cell_size,
             &self.texture,
             self.num_slices,
-            is_emoji,
+            is_true_emoji,  // Changed from is_emoji to is_true_emoji
             is_double_width,
         ) {
             console::error_1(&format!("Failed to rasterize glyph '{}': {:?}", symbol, e).into());
@@ -419,7 +529,8 @@ impl FontAtlas {
         }
 
         // Build glyph ID with appropriate flags
-        let glyph_id = if is_emoji {
+        // Only true emoji get EMOJI_FLAG, Nerd Font icons get style flags
+        let glyph_id = if is_true_emoji {
             base_glyph_id | Glyph::EMOJI_FLAG
         } else {
             base_glyph_id | Self::style_to_flags(style)
@@ -436,21 +547,33 @@ impl FontAtlas {
         self.glyph_coords.insert(symbol_compact.clone(), glyph_id);
         self.symbol_lookup.insert(base_glyph_id, symbol_compact);
 
+        console::log_1(&format!("[beamterm] Glyph '{}' rendered successfully, glyph_id=0x{:X}", symbol, glyph_id).into());
         Some(glyph_id)
     }
 
-    /// Checks if a symbol is an emoji
-    fn is_emoji(symbol: &str) -> bool {
-        // Try to use emojis crate if available (it's an optional dependency)
-        // For now, we'll use a simple heuristic - can be improved later
+    /// Checks if a symbol is a TRUE emoji (not Nerd Font icon)
+    /// These should use emoji font and be double-width
+    fn is_true_emoji(symbol: &str) -> bool {
         symbol.chars().any(|c| {
             let cp = c as u32;
-            // Emoji ranges (approximate)
+            // Emoji ranges (approximate) - NOT including Private Use Area
             (cp >= 0x1F300 && cp <= 0x1F9FF) || // Misc Symbols and Pictographs
             (cp >= 0x1F600 && cp <= 0x1F64F) || // Emoticons
             (cp >= 0x1F680 && cp <= 0x1F6FF) || // Transport and Map
             (cp >= 0x2600 && cp <= 0x26FF) ||   // Misc symbols
             (cp >= 0x2700 && cp <= 0x27BF)      // Dingbats
+        })
+    }
+    
+    /// Checks if a symbol is a Nerd Font icon (Private Use Area)
+    /// These should use the main Nerd Font and be SINGLE-width with colors
+    fn is_nerd_font_icon(symbol: &str) -> bool {
+        symbol.chars().any(|c| {
+            let cp = c as u32;
+            // Private Use Area ranges where Nerd Font icons live
+            (cp >= 0xE000 && cp <= 0xF8FF) ||   // Private Use Area (BMP)
+            (cp >= 0xF0000 && cp <= 0xFFFFD) || // Supplementary Private Use Area-A
+            (cp >= 0x100000 && cp <= 0x10FFFD)  // Supplementary Private Use Area-B
         })
     }
 
@@ -516,18 +639,28 @@ impl FontAtlas {
         };
         drop(font_system_borrow);
 
-        // Calculate bounds - double width for emoji/fullwidth
-        let render_bounds = if is_double_width {
-            GlyphBounds {
-                max_x: glyph_bounds.max_x + glyph_bounds.width(),
-                ..glyph_bounds
-            }
-        } else {
-            glyph_bounds
+        // Calculate render bounds based on cell_size
+        // Nerd Font icons can be wider than cell_w - accept ALL pixels from cosmic-text
+        // They will be clipped during texture upload if they exceed cell bounds
+        let (cell_w, cell_h) = *cell_size;
+        let padding = FontAtlasData::PADDING;
+        
+        // Use generous bounds - accept all pixels cosmic-text produces
+        // Nerd Font icons (like powerline) can extend beyond normal cell width
+        let render_w = if is_double_width { cell_w * 2 } else { cell_w + 4 }; // Extra margin for wide icons
+        let render_h = cell_h + 4; // Extra margin for tall glyphs
+        
+        // Accept pixels with generous margins - clipping happens in upload_pixels_to_texture
+        let render_bounds = GlyphBounds {
+            min_x: -padding - 2, // Allow overhang on the left
+            min_y: -padding - 2, // Allow overhang on the top  
+            max_x: render_w,     // Generous width
+            max_y: render_h,     // Generous height
         };
 
         // Calculate atlas coordinates from glyph ID
         let coord = Self::glyph_id_to_coordinate(base_glyph_id, glyph_bounds);
+        console::log_1(&format!("[beamterm] rasterize_and_upload_glyph: symbol='{}', base_glyph_id=0x{:X}, coord=({}, {}), num_slices={}, cell_size=({}, {})", symbol, base_glyph_id, coord.0, coord.1, num_slices, cell_size.0, cell_size.1).into());
         
         // Rasterize glyph
         let mut rasterizer = GlyphRasterizer::new(symbol)
@@ -544,24 +677,13 @@ impl FontAtlas {
         
         let mut buffer_borrowed = buffer.borrow_with(unsafe { &mut *font_system_ptr });
         
-        // Collect pixels - for double-width, we'll split into left/right halves
+        // Collect ALL pixels from the rasterized glyph
         let mut pixels = Vec::new();
-        let cell_w = glyph_bounds.width();
-        buffer_borrowed.draw(unsafe { &mut *cache_ptr }, Color::rgb(255, 255, 255), |x, y, _w, _h, color| {
+        let split_x = cell_w; // Split point for double-width glyphs
+        buffer_borrowed.draw(unsafe { &mut *cache_ptr }, Color::rgb(255, 255, 255), |x, y, _w, _h, color: Color| {
+            // Accept all visible pixels within render bounds
             if color.a() > 0 && render_bounds.contains(x, y) {
-                if is_double_width {
-                    // For double-width, render both left and right halves
-                    // Left half: base_glyph_id (even), right half: base_glyph_id + 1 (odd)
-                    if x < cell_w {
-                        // Left half
-                        pixels.push((x, y, color));
-                    } else {
-                        // Right half - normalize x to 0-based
-                        pixels.push((x - cell_w, y, color));
-                    }
-                } else {
-                    pixels.push((x, y, color));
-                }
+                pixels.push((x, y, color));
             }
         });
         drop(buffer_borrowed);
@@ -577,7 +699,7 @@ impl FontAtlas {
                 *cell_size,
                 texture,
                 num_slices,
-                |x| x < cell_w, // Left half filter
+                |x| x < split_x, // Left half filter
                 |x| x, // No offset
             )?;
 
@@ -591,8 +713,8 @@ impl FontAtlas {
                 *cell_size,
                 texture,
                 num_slices,
-                |x| x >= cell_w, // Right half filter
-                |x| x - cell_w, // Normalize to 0-based
+                |x| x >= split_x, // Right half filter
+                |x| x - split_x, // Normalize to 0-based
             )?;
         } else {
             // Upload normal glyph
@@ -625,18 +747,44 @@ impl FontAtlas {
         let (layer, glyph_index) = coord;
         let (cell_w, cell_h) = cell_size;
 
+        // Validate coordinates
+        if layer >= num_slices {
+            console::error_1(&format!("[beamterm] Layer {} exceeds num_slices {} (filtered)", layer, num_slices).into());
+            return Err(Error::texture_creation_failed());
+        }
+        if glyph_index >= 32 {
+            console::error_1(&format!("[beamterm] glyph_index {} >= 32 (filtered)", glyph_index).into());
+            return Err(Error::texture_creation_failed());
+        }
+
         // Calculate cell offset in pixels
         let cell_offset_y = glyph_index as i32 * cell_h;
-        let cell_offset_x = FontAtlasData::PADDING;
+        let cell_offset_x = 0; // No horizontal offset - texture width already includes padding
+        // Note: cell_size includes padding, so texture_width = cell_w already accounts for padding
+        
+        // Validate offsets - texture height is 32 * cell_h, width is cell_w (includes padding)
+        let texture_height = 32 * cell_h;
+        let texture_width = cell_w; // Texture width equals cell width (includes padding, 1 column layout)
+        if cell_offset_y + cell_h > texture_height {
+            console::error_1(&format!("[beamterm] cell_offset_y {} + cell_h {} > texture_height {} (filtered)", cell_offset_y, cell_h, texture_height).into());
+            return Err(Error::texture_creation_failed());
+        }
+        if cell_offset_x + cell_w > texture_width {
+            console::error_1(&format!("[beamterm] cell_offset_x {} + cell_w {} > texture_width {} (filtered)", cell_offset_x, cell_w, texture_width).into());
+            return Err(Error::texture_creation_failed());
+        }
 
         // Create RGBA texture data for this cell
         let mut texture_data = vec![0u8; (cell_w * cell_h * 4) as usize];
 
         // Fill texture data with filtered and transformed pixels
+        // The buffer is cell_w * cell_h (one cell). Pixels are mapped with padding offset.
+        let padding = FontAtlasData::PADDING;
         for (x, y, color) in pixels {
             if filter(*x) {
-                let px = transform(*x) - glyph_bounds.min_x + cell_offset_x;
-                let py = *y - glyph_bounds.min_y + cell_offset_y;
+                // Map source pixel coords to buffer coords with padding offset
+                let px = transform(*x) + padding;
+                let py = *y + padding;
 
                 if px >= 0 && px < cell_w && py >= 0 && py < cell_h {
                     let idx = ((py * cell_w + px) * 4) as usize;
@@ -649,6 +797,8 @@ impl FontAtlas {
             }
         }
 
+        console::log_1(&format!("[beamterm] Uploading glyph (filtered): layer={}, glyph_index={}, offset=({}, {}), size=({}, {}), texture_size=({}, {})", layer, glyph_index, cell_offset_x, cell_offset_y, cell_w, cell_h, texture_width, texture_height).into());
+        
         // Bind texture and upload data
         texture.bind(gl, 0);
         gl.bind_texture(GL::TEXTURE_2D_ARRAY, Some(texture.gl_texture()));
@@ -663,7 +813,10 @@ impl FontAtlas {
             GL::UNSIGNED_BYTE,
             Some(&texture_data),
             0 // src offset
-        ).map_err(|_| Error::texture_creation_failed())?;
+        ).map_err(|e| {
+            console::error_1(&format!("[beamterm] tex_sub_image_3d failed (filtered): layer={}, offset=({}, {}), size=({}, {}), error={:?}", layer, cell_offset_x, cell_offset_y, cell_w, cell_h, e).into());
+            Error::texture_creation_failed()
+        })?;
 
         Ok(())
     }
@@ -689,17 +842,44 @@ impl FontAtlas {
         let (layer, glyph_index) = coord;
         let (cell_w, cell_h) = cell_size;
 
+        // Validate coordinates
+        if layer >= num_slices {
+            console::error_1(&format!("[beamterm] Layer {} exceeds num_slices {} (simple)", layer, num_slices).into());
+            return Err(Error::texture_creation_failed());
+        }
+        if glyph_index >= 32 {
+            console::error_1(&format!("[beamterm] glyph_index {} >= 32 (simple)", glyph_index).into());
+            return Err(Error::texture_creation_failed());
+        }
+
         // Calculate cell offset in pixels
         let cell_offset_y = glyph_index as i32 * cell_h;
-        let cell_offset_x = FontAtlasData::PADDING;
+        let cell_offset_x = 0; // No horizontal offset - texture width already includes padding
+        // Note: cell_size includes padding, so texture_width = cell_w already accounts for padding
+        
+        // Validate offsets - texture height is 32 * cell_h, width is cell_w (includes padding)
+        let texture_height = 32 * cell_h;
+        let texture_width = cell_w; // Texture width equals cell width (includes padding, 1 column layout)
+        if cell_offset_y + cell_h > texture_height {
+            console::error_1(&format!("[beamterm] cell_offset_y {} + cell_h {} > texture_height {} (simple)", cell_offset_y, cell_h, texture_height).into());
+            return Err(Error::texture_creation_failed());
+        }
+        if cell_offset_x + cell_w > texture_width {
+            console::error_1(&format!("[beamterm] cell_offset_x {} + cell_w {} > texture_width {} (simple)", cell_offset_x, cell_w, texture_width).into());
+            return Err(Error::texture_creation_failed());
+        }
 
         // Create RGBA texture data for this cell
         let mut texture_data = vec![0u8; (cell_w * cell_h * 4) as usize];
 
         // Fill texture data with pixels
+        // The buffer is cell_w * cell_h (one cell). Pixels are mapped with padding offset.
+        let padding = FontAtlasData::PADDING;
+        let mut pixel_count = 0;
         for (x, y, color) in pixels {
-            let px = x - glyph_bounds.min_x + cell_offset_x;
-            let py = y - glyph_bounds.min_y + cell_offset_y;
+            // Map source pixel coords to buffer coords with padding offset
+            let px = x + padding;
+            let py = y + padding;
 
             if px >= 0 && px < cell_w && py >= 0 && py < cell_h {
                 let idx = ((py * cell_w + px) * 4) as usize;
@@ -708,9 +888,13 @@ impl FontAtlas {
                 texture_data[idx + 1] = g;
                 texture_data[idx + 2] = b;
                 texture_data[idx + 3] = a;
+                pixel_count += 1;
             }
         }
+        console::log_1(&format!("[beamterm] Glyph pixels mapped: {} pixels written to buffer", pixel_count).into());
 
+        console::log_1(&format!("[beamterm] Uploading glyph (simple): layer={}, glyph_index={}, offset=({}, {}), size=({}, {}), texture_size=({}, {})", layer, glyph_index, cell_offset_x, cell_offset_y, cell_w, cell_h, texture_width, texture_height).into());
+        
         // Bind texture and upload data
         texture.bind(gl, 0);
         gl.bind_texture(GL::TEXTURE_2D_ARRAY, Some(texture.gl_texture()));
@@ -725,7 +909,10 @@ impl FontAtlas {
             GL::UNSIGNED_BYTE,
             Some(&texture_data),
             0 // src offset
-        ).map_err(|_| Error::texture_creation_failed())?;
+        ).map_err(|e| {
+            console::error_1(&format!("[beamterm] tex_sub_image_3d failed (simple): layer={}, offset=({}, {}), size=({}, {}), error={:?}", layer, cell_offset_x, cell_offset_y, cell_w, cell_h, e).into());
+            Error::texture_creation_failed()
+        })?;
 
         Ok(())
     }

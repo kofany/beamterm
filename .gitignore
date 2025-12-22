@@ -55,3 +55,6 @@ __pycache__/
 *$py.class
 
 .vite
+QUICK_START_TERX.md
+terx-example-change.patch
+TERX_INTEGRATION.md

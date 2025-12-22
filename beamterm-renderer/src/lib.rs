@@ -1,5 +1,5 @@
 mod error;
-mod font;
+pub(crate) mod font;
 mod gl;
 mod mat4;
 mod terminal;

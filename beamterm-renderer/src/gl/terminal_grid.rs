@@ -285,11 +285,6 @@ impl TerminalGrid {
         // if we just wrote a double-width emoji in the current cell.
         let mut skip_idx = None;
 
-        let last_halfwidth = atlas.get_max_halfwidth_base_glyph_id();
-        let is_doublewidth = |glyph_id: u32| {
-            (glyph_id & (Glyph::GLYPH_ID_MASK | Glyph::EMOJI_FLAG)) > last_halfwidth
-        };
-
         cells
             .map(|(x, y, cell)| (w * y as usize + x as usize, cell))
             .filter(|(idx, _)| *idx < cell_count)
@@ -303,7 +298,10 @@ impl TerminalGrid {
                     .get_base_glyph_id(Some(gl), cell.symbol, cell.style_bits)
                     .unwrap_or(fallback_glyph);
 
-                if is_doublewidth(base_glyph_id) {
+                // Only true emoji (with EMOJI_FLAG) are double-width
+                let is_doublewidth = base_glyph_id & Glyph::EMOJI_FLAG != 0;
+
+                if is_doublewidth {
                     let glyph_id = base_glyph_id;
 
                     // render left half in current cell
@@ -325,34 +323,32 @@ impl TerminalGrid {
         Ok(())
     }
 
-    pub(crate) fn update_cell(&mut self, x: u16, y: u16, cell_data: CellData) {
+    pub(crate) fn update_cell(&mut self, gl: Option<&WebGl2RenderingContext>, x: u16, y: u16, cell_data: CellData) {
         let (cols, _) = self.terminal_size;
         let idx = y as usize * cols as usize + x as usize;
-        self.update_cell_by_index(idx, cell_data);
+        self.update_cell_by_index(gl, idx, cell_data);
 
         self.cells_pending_flush = true;
     }
 
-    pub(crate) fn update_cell_by_index(&mut self, idx: usize, cell_data: CellData) {
+    pub(crate) fn update_cell_by_index(&mut self, gl: Option<&WebGl2RenderingContext>, idx: usize, cell_data: CellData) {
         if idx >= self.cells.len() {
             return;
         }
 
         let atlas = &mut self.atlas;
         let fallback_glyph = self.fallback_glyph;
-        // Note: update_cell_by_index doesn't have gl context, so we can't do dynamic rendering here
-        // This is a limitation - dynamic rendering will only work in update_cells and update_cells_by_position
+        // Now supports dynamic rendering if gl context is provided
         let base_glyph_id = atlas
-            .get_base_glyph_id(None, cell_data.symbol, cell_data.style_bits)
+            .get_base_glyph_id(gl, cell_data.symbol, cell_data.style_bits)
             .unwrap_or(fallback_glyph);
 
-        let last_halfwidth = atlas.get_max_halfwidth_base_glyph_id();
-        let is_doublewidth = |glyph_id: u32| {
-            (glyph_id & (Glyph::GLYPH_ID_MASK | Glyph::EMOJI_FLAG)) > last_halfwidth
-        };
+        // Only true emoji (with EMOJI_FLAG) are double-width
+        // Nerd Font icons and other dynamic glyphs are single-width
+        let is_doublewidth = base_glyph_id & Glyph::EMOJI_FLAG != 0;
 
-        if is_doublewidth(base_glyph_id) {
-            // Emoji: don't apply style bits
+        if is_doublewidth {
+            // Emoji: don't apply style bits, fill both idx and idx+1
             let glyph_id = base_glyph_id;
             self.cells[idx] = CellDynamic::new(glyph_id, cell_data.fg, cell_data.bg);
             if let Some(c) = self.cells.get_mut(idx + 1) {
