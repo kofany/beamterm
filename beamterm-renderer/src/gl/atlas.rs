@@ -335,33 +335,75 @@ impl FontAtlas {
     ) -> Option<u32> {
         let dynamic_state = self.dynamic_state.as_mut()?;
 
+        // Check if glyph is emoji or fullwidth
+        let is_emoji = Self::is_emoji(symbol);
+        let is_fullwidth = symbol.chars().next()
+            .map(|c| unicode_width::UnicodeWidthChar::width(c) == Some(2))
+            .unwrap_or(false);
+        let is_double_width = is_emoji || is_fullwidth;
+
         // Check cache first
         let key = GlyphKey::new(symbol, style);
         if let Some(cached) = dynamic_state.glyph_cache.get(&key) {
-            return Some(cached.glyph_id | Self::style_to_flags(style));
+            let glyph_id = if is_emoji {
+                cached.glyph_id | Glyph::EMOJI_FLAG
+            } else {
+                cached.glyph_id | Self::style_to_flags(style)
+            };
+            return Some(glyph_id);
         }
 
-        // Allocate glyph ID
-        let base_glyph_id = dynamic_state.next_glyph_id;
-        dynamic_state.next_glyph_id += 1;
+        // Allocate glyph ID(s) - double-width glyphs need 2 IDs
+        let base_glyph_id = if is_double_width {
+            // Align to even ID for double-width glyphs
+            let aligned_id = (dynamic_state.next_glyph_id + 1) & !1;
+            dynamic_state.next_glyph_id = aligned_id + 2; // Reserve 2 IDs
+            aligned_id
+        } else {
+            let id = dynamic_state.next_glyph_id;
+            dynamic_state.next_glyph_id += 1;
+            id
+        };
+
+        // Check if we need to grow the texture
+        const GLYPHS_PER_LAYER: u32 = 32;
+        let required_layer = ((base_glyph_id + if is_double_width { 1 } else { 0 }) >> 5) as u32;
+        if required_layer >= self.num_slices {
+            // Need to grow texture
+            if let Err(e) = Self::grow_texture(gl, &mut self.texture, self.num_slices, &self.cell_size) {
+                console::error_1(&format!("Failed to grow texture: {:?}", e).into());
+                return None;
+            }
+            // Double the number of layers
+            self.num_slices = self.num_slices * 2;
+            console::log_1(&format!("Atlas texture grown to {} layers", self.num_slices).into());
+        }
 
         // Rasterize and upload glyph to texture
+        let render_style = if is_emoji { FontStyle::Normal } else { style };
         if let Err(e) = Self::rasterize_and_upload_glyph(
             gl,
             symbol,
-            style,
+            render_style,
             base_glyph_id,
             &mut dynamic_state.font_system,
             dynamic_state.glyph_bounds,
             &self.cell_size,
             &self.texture,
             self.num_slices,
+            is_emoji,
+            is_double_width,
         ) {
             console::error_1(&format!("Failed to rasterize glyph '{}': {:?}", symbol, e).into());
             return None;
         }
 
-        let glyph_id = base_glyph_id | Self::style_to_flags(style);
+        // Build glyph ID with appropriate flags
+        let glyph_id = if is_emoji {
+            base_glyph_id | Glyph::EMOJI_FLAG
+        } else {
+            base_glyph_id | Self::style_to_flags(style)
+        };
         
         // Cache the result
         dynamic_state.glyph_cache.insert(
@@ -375,6 +417,21 @@ impl FontAtlas {
         self.symbol_lookup.insert(base_glyph_id, symbol_compact);
 
         Some(glyph_id)
+    }
+
+    /// Checks if a symbol is an emoji
+    fn is_emoji(symbol: &str) -> bool {
+        // Try to use emojis crate if available (it's an optional dependency)
+        // For now, we'll use a simple heuristic - can be improved later
+        symbol.chars().any(|c| {
+            let cp = c as u32;
+            // Emoji ranges (approximate)
+            (cp >= 0x1F300 && cp <= 0x1F9FF) || // Misc Symbols and Pictographs
+            (cp >= 0x1F600 && cp <= 0x1F64F) || // Emoticons
+            (cp >= 0x1F680 && cp <= 0x1F6FF) || // Transport and Map
+            (cp >= 0x2600 && cp <= 0x26FF) ||   // Misc symbols
+            (cp >= 0x2700 && cp <= 0x27BF)      // Dingbats
+        })
     }
 
     /// Converts FontStyle to glyph ID flags
@@ -399,6 +456,8 @@ impl FontAtlas {
     /// * `cell_size` - Cell size with padding
     /// * `texture` - Texture to upload to
     /// * `num_slices` - Number of texture layers
+    /// * `is_emoji` - Whether this is an emoji glyph
+    /// * `is_double_width` - Whether this is a double-width glyph (emoji or fullwidth)
     fn rasterize_and_upload_glyph(
         gl: &web_sys::WebGl2RenderingContext,
         symbol: &str,
@@ -409,13 +468,31 @@ impl FontAtlas {
         cell_size: &(i32, i32),
         texture: &crate::gl::texture::Texture,
         num_slices: u32,
+        is_emoji: bool,
+        is_double_width: bool,
     ) -> Result<(), Error> {
         use cosmic_text::Color;
 
         let mut font_system_borrow = font_system.borrow_mut();
         let metrics = font_system_borrow.metrics();
-        let font_family_name = font_system_borrow.font_family_name().to_string();
+        
+        // Use emoji font for emoji, main font otherwise
+        let font_family_name = if is_emoji {
+            font_system_borrow.emoji_font_family_name().to_string()
+        } else {
+            font_system_borrow.font_family_name().to_string()
+        };
         drop(font_system_borrow);
+
+        // Calculate bounds - double width for emoji/fullwidth
+        let render_bounds = if is_double_width {
+            GlyphBounds {
+                max_x: glyph_bounds.max_x + glyph_bounds.width(),
+                ..glyph_bounds
+            }
+        } else {
+            glyph_bounds
+        };
 
         // Calculate atlas coordinates from glyph ID
         let coord = Self::glyph_id_to_coordinate(base_glyph_id, glyph_bounds);
@@ -424,7 +501,7 @@ impl FontAtlas {
         let mut rasterizer = GlyphRasterizer::new(symbol)
             .font_family_name(&font_family_name)
             .font_style(style)
-            .monospace_width(glyph_bounds.width() as u32);
+            .monospace_width(if is_double_width { glyph_bounds.width() as u32 * 2 } else { glyph_bounds.width() as u32 });
 
         let mut font_system_borrow2 = font_system.borrow_mut();
         let mut buffer = rasterizer.rasterize(font_system_borrow2.font_system_mut(), metrics)?;
@@ -435,25 +512,126 @@ impl FontAtlas {
         
         let mut buffer_borrowed = buffer.borrow_with(unsafe { &mut *font_system_ptr });
         
-        // Collect pixels
+        // Collect pixels - for double-width, we'll split into left/right halves
         let mut pixels = Vec::new();
+        let cell_w = glyph_bounds.width();
         buffer_borrowed.draw(unsafe { &mut *cache_ptr }, Color::rgb(255, 255, 255), |x, y, _w, _h, color| {
-            if color.a() > 0 && glyph_bounds.contains(x, y) {
-                pixels.push((x, y, color));
+            if color.a() > 0 && render_bounds.contains(x, y) {
+                if is_double_width {
+                    // For double-width, render both left and right halves
+                    // Left half: base_glyph_id (even), right half: base_glyph_id + 1 (odd)
+                    if x < cell_w {
+                        // Left half
+                        pixels.push((x, y, color));
+                    } else {
+                        // Right half - normalize x to 0-based
+                        pixels.push((x - cell_w, y, color));
+                    }
+                } else {
+                    pixels.push((x, y, color));
+                }
             }
         });
         drop(buffer_borrowed);
 
-        // Upload pixels to texture
-        Self::upload_pixels_to_texture(
-            gl,
-            &pixels,
-            coord,
-            glyph_bounds,
-            *cell_size,
-            texture,
-            num_slices,
-        )?;
+        // For double-width glyphs, we need to upload both halves
+        if is_double_width {
+            // Upload left half (base_glyph_id)
+            Self::upload_pixels_to_texture_filtered(
+                gl,
+                &pixels,
+                coord,
+                glyph_bounds,
+                *cell_size,
+                texture,
+                num_slices,
+                |x| x < cell_w, // Left half filter
+                |x| x, // No offset
+            )?;
+
+            // Upload right half (base_glyph_id + 1)
+            let right_coord = Self::glyph_id_to_coordinate(base_glyph_id + 1, glyph_bounds);
+            Self::upload_pixels_to_texture_filtered(
+                gl,
+                &pixels,
+                right_coord,
+                glyph_bounds,
+                *cell_size,
+                texture,
+                num_slices,
+                |x| x >= cell_w, // Right half filter
+                |x| x - cell_w, // Normalize to 0-based
+            )?;
+        } else {
+            // Upload normal glyph
+            Self::upload_pixels_to_texture(
+                gl,
+                &pixels,
+                coord,
+                glyph_bounds,
+                *cell_size,
+                texture,
+                num_slices,
+            )?;
+        }
+
+        Ok(())
+    }
+
+    /// Uploads pixel data to the texture with filtering and coordinate transformation
+    fn upload_pixels_to_texture_filtered(
+        gl: &web_sys::WebGl2RenderingContext,
+        pixels: &[(i32, i32, cosmic_text::Color)],
+        coord: (u32, u8),
+        glyph_bounds: GlyphBounds,
+        cell_size: (i32, i32),
+        texture: &crate::gl::texture::Texture,
+        num_slices: u32,
+        filter: impl Fn(i32) -> bool,
+        transform: impl Fn(i32) -> i32,
+    ) -> Result<(), Error> {
+        let (layer, glyph_index) = coord;
+        let (cell_w, cell_h) = cell_size;
+
+        // Calculate cell offset in pixels
+        let cell_offset_y = glyph_index as i32 * cell_h;
+        let cell_offset_x = FontAtlasData::PADDING;
+
+        // Create RGBA texture data for this cell
+        let mut texture_data = vec![0u8; (cell_w * cell_h * 4) as usize];
+
+        // Fill texture data with filtered and transformed pixels
+        for (x, y, color) in pixels {
+            if filter(*x) {
+                let px = transform(*x) - glyph_bounds.min_x + cell_offset_x;
+                let py = *y - glyph_bounds.min_y + cell_offset_y;
+
+                if px >= 0 && px < cell_w && py >= 0 && py < cell_h {
+                    let idx = ((py * cell_w + px) * 4) as usize;
+                    let [r, g, b, a] = color.as_rgba();
+                    texture_data[idx] = r;
+                    texture_data[idx + 1] = g;
+                    texture_data[idx + 2] = b;
+                    texture_data[idx + 3] = a;
+                }
+            }
+        }
+
+        // Bind texture and upload data
+        texture.bind(gl, 0);
+        gl.bind_texture(GL::TEXTURE_2D_ARRAY, Some(texture.gl_texture()));
+        
+        #[rustfmt::skip]
+        gl.tex_sub_image_3d_with_opt_u8_array_and_src_offset(
+            GL::TEXTURE_2D_ARRAY,
+            0, // level
+            cell_offset_x, cell_offset_y, layer as i32, // offset (x, y, layer)
+            cell_w, cell_h, 1, // size (width, height, depth)
+            GL::RGBA,
+            GL::UNSIGNED_BYTE,
+            Some(&texture_data),
+            0 // src offset
+        ).map_err(|_| Error::texture_creation_failed())?;
 
         Ok(())
     }
@@ -542,6 +720,39 @@ impl FontAtlas {
 
     pub(crate) fn get_symbol_lookup(&self) -> &HashMap<u32, CompactString> {
         &self.symbol_lookup
+    }
+
+    /// Grows the texture by creating a new larger texture.
+    ///
+    /// This creates a new texture with double the number of layers.
+    /// Note: Existing texture data is not preserved - glyphs will be re-rendered on demand.
+    fn grow_texture(
+        gl: &web_sys::WebGl2RenderingContext,
+        texture: &mut crate::gl::texture::Texture,
+        current_layers: u32,
+        cell_size: &(i32, i32),
+    ) -> Result<(), Error> {
+        let (cell_w, cell_h) = *cell_size;
+        let new_layers = current_layers * 2;
+
+        // Calculate texture height (32 glyphs per layer)
+        const GLYPHS_PER_LAYER: i32 = 32;
+        let texture_height = cell_h * GLYPHS_PER_LAYER;
+
+        // Create new larger texture
+        let new_texture = crate::gl::texture::Texture::new_empty(
+            gl,
+            GL::RGBA,
+            cell_w,
+            texture_height,
+            new_layers as i32,
+        )?;
+
+        // Replace the texture (existing data will be lost, but glyphs are cached)
+        texture.delete(gl);
+        *texture = new_texture;
+
+        Ok(())
     }
 }
 
