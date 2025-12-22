@@ -315,6 +315,211 @@ impl FontAtlas {
         }
     }
 
+    /// Renders a glyph on-demand for dynamic atlas and returns its glyph ID.
+    ///
+    /// This method checks the cache first, and if the glyph is not cached,
+    /// it rasterizes it, uploads it to the texture, and caches the result.
+    ///
+    /// # Arguments
+    /// * `gl` - WebGL2 context
+    /// * `symbol` - The character/grapheme string to render
+    /// * `style` - Font style (Normal, Bold, Italic, BoldItalic)
+    ///
+    /// # Returns
+    /// The glyph ID (with style flags) for the rendered glyph, or None if rendering failed
+    pub fn render_glyph_on_demand(
+        &mut self,
+        gl: &web_sys::WebGl2RenderingContext,
+        symbol: &str,
+        style: FontStyle,
+    ) -> Option<u32> {
+        let dynamic_state = self.dynamic_state.as_mut()?;
+
+        // Check cache first
+        let key = GlyphKey::new(symbol, style);
+        if let Some(cached) = dynamic_state.glyph_cache.get(&key) {
+            return Some(cached.glyph_id | Self::style_to_flags(style));
+        }
+
+        // Allocate glyph ID
+        let base_glyph_id = dynamic_state.next_glyph_id;
+        dynamic_state.next_glyph_id += 1;
+
+        // Rasterize and upload glyph to texture
+        if let Err(e) = Self::rasterize_and_upload_glyph(
+            gl,
+            symbol,
+            style,
+            base_glyph_id,
+            &mut dynamic_state.font_system,
+            dynamic_state.glyph_bounds,
+            &self.cell_size,
+            &self.texture,
+            self.num_slices,
+        ) {
+            console::error_1(&format!("Failed to rasterize glyph '{}': {:?}", symbol, e).into());
+            return None;
+        }
+
+        let glyph_id = base_glyph_id | Self::style_to_flags(style);
+        
+        // Cache the result
+        dynamic_state.glyph_cache.insert(
+            key,
+            GlyphRender { glyph_id: base_glyph_id },
+        );
+
+        // Update lookups
+        let symbol_compact = symbol.to_compact_string();
+        self.glyph_coords.insert(symbol_compact.clone(), glyph_id);
+        self.symbol_lookup.insert(base_glyph_id, symbol_compact);
+
+        Some(glyph_id)
+    }
+
+    /// Converts FontStyle to glyph ID flags
+    fn style_to_flags(style: FontStyle) -> u32 {
+        match style {
+            FontStyle::Normal => 0,
+            FontStyle::Bold => Glyph::BOLD_FLAG,
+            FontStyle::Italic => Glyph::ITALIC_FLAG,
+            FontStyle::BoldItalic => Glyph::BOLD_FLAG | Glyph::ITALIC_FLAG,
+        }
+    }
+
+    /// Rasterizes a glyph and uploads it to the texture.
+    ///
+    /// # Arguments
+    /// * `gl` - WebGL2 context
+    /// * `symbol` - The character/grapheme string to render
+    /// * `style` - Font style
+    /// * `base_glyph_id` - Base glyph ID (without style flags)
+    /// * `font_system` - Runtime font system (contains cache)
+    /// * `glyph_bounds` - Glyph bounds (cell dimensions)
+    /// * `cell_size` - Cell size with padding
+    /// * `texture` - Texture to upload to
+    /// * `num_slices` - Number of texture layers
+    fn rasterize_and_upload_glyph(
+        gl: &web_sys::WebGl2RenderingContext,
+        symbol: &str,
+        style: FontStyle,
+        base_glyph_id: u32,
+        font_system: &mut Rc<RefCell<RuntimeFontSystem>>,
+        glyph_bounds: GlyphBounds,
+        cell_size: &(i32, i32),
+        texture: &crate::gl::texture::Texture,
+        num_slices: u32,
+    ) -> Result<(), Error> {
+        use cosmic_text::Color;
+
+        let mut font_system_borrow = font_system.borrow_mut();
+        let metrics = font_system_borrow.metrics();
+        let font_family_name = font_system_borrow.font_family_name().to_string();
+        drop(font_system_borrow);
+
+        // Calculate atlas coordinates from glyph ID
+        let coord = Self::glyph_id_to_coordinate(base_glyph_id, glyph_bounds);
+        
+        // Rasterize glyph
+        let mut rasterizer = GlyphRasterizer::new(symbol)
+            .font_family_name(&font_family_name)
+            .font_style(style)
+            .monospace_width(glyph_bounds.width() as u32);
+
+        let mut font_system_borrow2 = font_system.borrow_mut();
+        let mut buffer = rasterizer.rasterize(font_system_borrow2.font_system_mut(), metrics)?;
+        
+        // Get raw pointers to both fields (same pattern as calculate_glyph_bounds)
+        let font_system_ptr: *mut cosmic_text::FontSystem = &mut font_system_borrow2.font_system;
+        let cache_ptr: *mut cosmic_text::SwashCache = &mut font_system_borrow2.cache;
+        
+        let mut buffer_borrowed = buffer.borrow_with(unsafe { &mut *font_system_ptr });
+        
+        // Collect pixels
+        let mut pixels = Vec::new();
+        buffer_borrowed.draw(unsafe { &mut *cache_ptr }, Color::rgb(255, 255, 255), |x, y, _w, _h, color| {
+            if color.a() > 0 && glyph_bounds.contains(x, y) {
+                pixels.push((x, y, color));
+            }
+        });
+        drop(buffer_borrowed);
+
+        // Upload pixels to texture
+        Self::upload_pixels_to_texture(
+            gl,
+            &pixels,
+            coord,
+            glyph_bounds,
+            *cell_size,
+            texture,
+            num_slices,
+        )?;
+
+        Ok(())
+    }
+
+    /// Converts a base glyph ID to atlas coordinates (layer and glyph index)
+    fn glyph_id_to_coordinate(base_glyph_id: u32, glyph_bounds: GlyphBounds) -> (u32, u8) {
+        // 32 glyphs per layer (bits 0-4: glyph index, bits 5+: layer)
+        let layer = base_glyph_id >> 5;
+        let glyph_index = (base_glyph_id & 0x1F) as u8;
+        (layer, glyph_index)
+    }
+
+    /// Uploads pixel data to the texture at the specified coordinates
+    fn upload_pixels_to_texture(
+        gl: &web_sys::WebGl2RenderingContext,
+        pixels: &[(i32, i32, cosmic_text::Color)],
+        coord: (u32, u8),
+        glyph_bounds: GlyphBounds,
+        cell_size: (i32, i32),
+        texture: &crate::gl::texture::Texture,
+        num_slices: u32,
+    ) -> Result<(), Error> {
+        let (layer, glyph_index) = coord;
+        let (cell_w, cell_h) = cell_size;
+
+        // Calculate cell offset in pixels
+        let cell_offset_y = glyph_index as i32 * cell_h;
+        let cell_offset_x = FontAtlasData::PADDING;
+
+        // Create RGBA texture data for this cell
+        let mut texture_data = vec![0u8; (cell_w * cell_h * 4) as usize];
+
+        // Fill texture data with pixels
+        for (x, y, color) in pixels {
+            let px = x - glyph_bounds.min_x + cell_offset_x;
+            let py = y - glyph_bounds.min_y + cell_offset_y;
+
+            if px >= 0 && px < cell_w && py >= 0 && py < cell_h {
+                let idx = ((py * cell_w + px) * 4) as usize;
+                let [r, g, b, a] = color.as_rgba();
+                texture_data[idx] = r;
+                texture_data[idx + 1] = g;
+                texture_data[idx + 2] = b;
+                texture_data[idx + 3] = a;
+            }
+        }
+
+        // Bind texture and upload data
+        texture.bind(gl, 0);
+        gl.bind_texture(GL::TEXTURE_2D_ARRAY, Some(texture.gl_texture()));
+        
+        #[rustfmt::skip]
+        gl.tex_sub_image_3d_with_opt_u8_array_and_src_offset(
+            GL::TEXTURE_2D_ARRAY,
+            0, // level
+            cell_offset_x, cell_offset_y, layer as i32, // offset (x, y, layer)
+            cell_w, cell_h, 1, // size (width, height, depth)
+            GL::RGBA,
+            GL::UNSIGNED_BYTE,
+            Some(&texture_data),
+            0 // src offset
+        ).map_err(|_| Error::texture_creation_failed())?;
+
+        Ok(())
+    }
+
     /// Returns the maximum assigned halfwidth base glyph ID.
     pub fn get_max_halfwidth_base_glyph_id(&self) -> u32 {
         self.last_halfwidth_base_glyph_id
