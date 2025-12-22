@@ -296,7 +296,17 @@ impl FontAtlas {
     }
 
     /// Returns the base glyph identifier for the given key
-    pub fn get_base_glyph_id(&self, key: &str) -> Option<u32> {
+    ///
+    /// For dynamic atlas, if the glyph is not found, it will be rendered on-demand.
+    /// The `gl` parameter is only used for dynamic atlas rendering.
+    pub fn get_base_glyph_id(
+        &mut self,
+        gl: Option<&web_sys::WebGl2RenderingContext>,
+        key: &str,
+        style_bits: u32,
+    ) -> Option<u32> {
+        // Convert style_bits to FontStyle
+        let style = Self::style_bits_to_font_style(style_bits);
         if key.len() == 1 {
             let ch = key.chars().next().unwrap();
             if ch.is_ascii() {
@@ -306,13 +316,23 @@ impl FontAtlas {
             }
         }
 
-        match self.glyph_coords.get(key) {
-            Some(id) => Some(*id),
-            None => {
-                self.glyph_tracker.record_missing(key);
-                None
-            },
+        // Check if glyph exists in lookup
+        if let Some(id) = self.glyph_coords.get(key) {
+            return Some(*id);
         }
+
+        // Glyph not found - try dynamic rendering if atlas is dynamic
+        if let Some(ref gl_ctx) = gl {
+            if self.dynamic_state.is_some() {
+                if let Some(glyph_id) = self.render_glyph_on_demand(gl_ctx, key, style) {
+                    return Some(glyph_id);
+                }
+            }
+        }
+
+        // Track as missing
+        self.glyph_tracker.record_missing(key);
+        None
     }
 
     /// Renders a glyph on-demand for dynamic atlas and returns its glyph ID.
@@ -432,6 +452,18 @@ impl FontAtlas {
             (cp >= 0x2600 && cp <= 0x26FF) ||   // Misc symbols
             (cp >= 0x2700 && cp <= 0x27BF)      // Dingbats
         })
+    }
+
+    /// Converts style bits to FontStyle enum
+    fn style_bits_to_font_style(style_bits: u32) -> FontStyle {
+        let bold = (style_bits & Glyph::BOLD_FLAG) != 0;
+        let italic = (style_bits & Glyph::ITALIC_FLAG) != 0;
+        match (bold, italic) {
+            (false, false) => FontStyle::Normal,
+            (true, false) => FontStyle::Bold,
+            (false, true) => FontStyle::Italic,
+            (true, true) => FontStyle::BoldItalic,
+        }
     }
 
     /// Converts FontStyle to glyph ID flags

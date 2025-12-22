@@ -283,6 +283,8 @@ pub struct TerminalBuilder {
     input_handler: Option<InputHandler>,
     canvas_padding_color: u32,
     enable_debug_api: bool,
+    /// Dynamic font configuration (font family, size, line height)
+    dynamic_font: Option<(String, f32, f32)>,
 }
 
 impl TerminalBuilder {
@@ -295,6 +297,7 @@ impl TerminalBuilder {
             input_handler: None,
             canvas_padding_color: 0x000000,
             enable_debug_api: false,
+            dynamic_font: None,
         }
     }
 
@@ -304,6 +307,33 @@ impl TerminalBuilder {
     /// to provide a custom atlas with different fonts, sizes, or character sets.
     pub fn font_atlas(mut self, atlas: FontAtlasData) -> Self {
         self.atlas_data = Some(atlas);
+        self.dynamic_font = None; // Clear dynamic font if static atlas is set
+        self
+    }
+
+    /// Sets up dynamic font atlas with runtime glyph rasterization.
+    ///
+    /// This enables on-demand glyph rendering, which is useful for:
+    /// - Supporting arbitrary font sizes without pre-generating atlases
+    /// - Reducing binary size by not bundling multiple static atlases
+    /// - Supporting dynamic font changes at runtime
+    ///
+    /// # Arguments
+    /// * `font_family` - Font family name (e.g., "JetBrains Mono Nerd Font"). If None, uses default embedded font.
+    /// * `font_size` - Font size in points
+    /// * `line_height` - Line height multiplier (e.g., 1.2 for 120% line height)
+    pub fn dynamic_font(
+        mut self,
+        font_family: Option<&str>,
+        font_size: f32,
+        line_height: f32,
+    ) -> Self {
+        let family = font_family.map(|s| s.to_string()).unwrap_or_else(|| {
+            // Default to embedded JetBrains Nerd Mono
+            "JetBrains Mono Nerd Font".to_string()
+        });
+        self.dynamic_font = Some((family, font_size, line_height));
+        self.atlas_data = None; // Clear static atlas if dynamic font is set
         self
     }
 
@@ -366,9 +396,37 @@ impl TerminalBuilder {
         };
         let renderer = renderer.canvas_padding_color(self.canvas_padding_color);
 
-        // load font atlas
+        // load font atlas (static or dynamic)
         let gl = renderer.gl();
-        let atlas = FontAtlas::load(gl, self.atlas_data.unwrap_or_default())?;
+        let atlas = if let Some((font_family, font_size, line_height)) = self.dynamic_font {
+            // Create dynamic atlas
+            use crate::font::{default_font, runtime_font_system::RuntimeFontSystem};
+            use std::rc::Rc;
+            use std::cell::RefCell;
+
+            let mut font_system = RuntimeFontSystem::new(
+                font_family.clone(),
+                "Noto Color Emoji".to_string(), // Default emoji font
+                font_size,
+                line_height,
+            )?;
+
+            // Load default embedded font if no custom font specified
+            if font_family == "JetBrains Mono Nerd Font" {
+                default_font::load_default_font(font_system.font_system_mut())
+                    .map_err(|e| Error::Data(format!("Failed to load default font: {}", e)))?;
+            }
+
+            FontAtlas::new_dynamic(
+                gl,
+                Rc::new(RefCell::new(font_system)),
+                font_size,
+                line_height,
+            )?
+        } else {
+            // Use static atlas
+            FontAtlas::load(gl, self.atlas_data.unwrap_or_default())?
+        };
 
         // create terminal grid
         let canvas_size = renderer.canvas_size();
@@ -478,12 +536,13 @@ impl TerminalDebugApi {
     }
 
     /// Returns the base glyph ID for a given symbol, or null if not found.
+    ///
+    /// Note: This method doesn't support dynamic rendering. For dynamic atlas,
+    /// glyphs will be rendered automatically when using update_cells().
     #[wasm_bindgen(js_name = "getBaseGlyphId")]
     pub fn get_base_glyph_id(&self, symbol: &str) -> Option<u32> {
-        self.grid
-            .borrow()
-            .atlas()
-            .get_base_glyph_id(symbol)
+        // Query only - doesn't trigger dynamic rendering
+        self.grid.borrow().base_glyph_id(symbol)
     }
 
     /// Returns the symbol for a given glyph ID, or null if not found.
