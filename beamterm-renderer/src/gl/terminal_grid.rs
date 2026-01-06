@@ -247,7 +247,16 @@ impl TerminalGrid {
     /// # Parameters
     /// * `gl` - WebGL2 rendering context
     fn upload_ubo_data(&self, gl: &WebGl2RenderingContext) {
-        let vertex_ubo = CellVertexUbo::new(self.canvas_size_px, self.cell_size());
+        let physical_canvas_size = (
+            (self.canvas_size_px.0 as f32 * self.pixel_ratio).round() as i32,
+            (self.canvas_size_px.1 as f32 * self.pixel_ratio).round() as i32,
+        );
+        let cell_size = self.cell_size();
+        let physical_cell_size = (
+            (cell_size.0 as f32 * self.pixel_ratio).round() as i32,
+            (cell_size.1 as f32 * self.pixel_ratio).round() as i32,
+        );
+        let vertex_ubo = CellVertexUbo::new(physical_canvas_size, physical_cell_size);
         self.gpu.ubo_vertex.upload_data(gl, &vertex_ubo);
 
         let fragment_ubo = CellFragmentUbo::new(&self.atlas);
