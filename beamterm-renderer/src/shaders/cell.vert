@@ -13,8 +13,7 @@ layout(location = 3) in uvec2 a_packed_data;
 // uniforms
 layout(std140) uniform VertUbo {
     mat4 u_projection;
-    vec2 u_cell_size; // unpadded cell size in pixels (physical)
-    float u_pixel_ratio;
+    vec2 u_cell_size; // unpadded cell size in logical pixels
 };
 
 // pass glyph index and pre-extracted colors to fragment shader
@@ -46,13 +45,13 @@ void main() {
         extract_byte(a_packed_data.y, 3u)
     );
 
+    // Cell offset in logical pixels (pixel-snapped to avoid gaps)
     vec2 offset = vec2(
-        floor(float(a_instance_pos.x) * u_cell_size.x + 0.5), // pixel-snapped
-        floor(float(a_instance_pos.y) * u_cell_size.y + 0.5)  // pixel-snapped
+        floor(float(a_instance_pos.x) * u_cell_size.x + 0.5),
+        floor(float(a_instance_pos.y) * u_cell_size.y + 0.5)
     );
 
-    // Scale vertex position using u_cell_size to match the rounded physical cell size exactly
-    // a_tex_coord is 0-1 normalized, so we can use it to scale by physical cell size
+    // Scale vertex position by logical cell size
     vec2 scaled_pos = a_tex_coord * u_cell_size;
     gl_Position = u_projection * vec4(scaled_pos + offset, 0.0, 1.0);
 }

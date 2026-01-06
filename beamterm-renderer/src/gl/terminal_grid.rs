@@ -247,18 +247,9 @@ impl TerminalGrid {
     /// # Parameters
     /// * `gl` - WebGL2 rendering context
     fn upload_ubo_data(&self, gl: &WebGl2RenderingContext) {
-        let physical_canvas_size = (
-            (self.canvas_size_px.0 as f32 * self.pixel_ratio).round() as i32,
-            (self.canvas_size_px.1 as f32 * self.pixel_ratio).round() as i32,
-        );
-        let cell_size = self.cell_size();
-        // Don't round cell_size to avoid accumulated rounding errors across cells
-        let physical_cell_size = (
-            cell_size.0 as f32 * self.pixel_ratio,
-            cell_size.1 as f32 * self.pixel_ratio,
-        );
-        let vertex_ubo =
-            CellVertexUbo::new(physical_canvas_size, physical_cell_size, self.pixel_ratio);
+        // Use logical coordinates for projection and cell_size.
+        // WebGL viewport (physical) will automatically scale the output.
+        let vertex_ubo = CellVertexUbo::new(self.canvas_size_px, self.cell_size());
         self.gpu.ubo_vertex.upload_data(gl, &vertex_ubo);
 
         let fragment_ubo = CellFragmentUbo::new(&self.atlas);
@@ -1004,9 +995,8 @@ impl CellDynamic {
 #[repr(C, align(16))] // std140 layout requires proper alignment
 struct CellVertexUbo {
     pub projection: [f32; 16], // mat4
-    pub cell_size: [f32; 2],   // vec2 - screen cell size (physical)
-    pub pixel_ratio: f32,      // device pixel ratio
-    pub _padding: f32,
+    pub cell_size: [f32; 2],   // vec2 - screen cell size (logical)
+    pub _padding: [f32; 2],
 }
 
 #[repr(C, align(16))] // std140 layout requires proper alignment
@@ -1023,14 +1013,13 @@ struct CellFragmentUbo {
 impl CellVertexUbo {
     pub const BINDING_POINT: u32 = 0;
 
-    fn new(canvas_size: (i32, i32), cell_size: (f32, f32), pixel_ratio: f32) -> Self {
+    fn new(canvas_size: (i32, i32), cell_size: (i32, i32)) -> Self {
         let projection =
             Mat4::orthographic_from_size(canvas_size.0 as f32, canvas_size.1 as f32).data;
         Self {
             projection,
-            cell_size: [cell_size.0, cell_size.1],
-            pixel_ratio,
-            _padding: 0.0,
+            cell_size: [cell_size.0 as f32, cell_size.1 as f32],
+            _padding: [0.0, 0.0],
         }
     }
 }

@@ -124,7 +124,7 @@ impl Shader for WaveInterference {
         });
 
         // Draw text in the center
-        let text = "Hello this is test";
+        let text = "This is Beamterm";
         let text_len = text.len() as u16;
         let center_x = area.x + (area.width.saturating_sub(text_len)) / 2;
         let center_y = area.y + area.height / 2;
