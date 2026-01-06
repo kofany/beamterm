@@ -30,7 +30,7 @@ pub struct TerminalGrid {
     cells: Vec<CellDynamic>,
     /// Terminal size in cells
     terminal_size: (u16, u16),
-    /// Size of the canvas in pixels
+    /// Size of the canvas in logical pixels
     canvas_size_px: (i32, i32),
     /// Font atlas for rendering text.
     atlas: FontAtlas,
@@ -40,6 +40,8 @@ pub struct TerminalGrid {
     selection: SelectionTracker,
     /// Indicates whether there are cells pending flush to the GPU.
     cells_pending_flush: bool,
+    /// Device pixel ratio for HiDPI displays
+    pixel_ratio: f32,
 }
 
 /// GPU resources that need to be recreated after a WebGL context loss.
@@ -138,6 +140,7 @@ impl TerminalGrid {
         gl: &WebGl2RenderingContext,
         atlas: FontAtlas,
         screen_size: (i32, i32),
+        pixel_ratio: f32,
     ) -> Result<Self, Error> {
         let cell_size = atlas.cell_size();
         let (cols, rows) = (screen_size.0 / cell_size.0, screen_size.1 / cell_size.1);
@@ -156,6 +159,7 @@ impl TerminalGrid {
             fallback_glyph: ' ' as u16,
             selection: SelectionTracker::new(),
             cells_pending_flush: false,
+            pixel_ratio,
         };
 
         grid.upload_ubo_data(gl);

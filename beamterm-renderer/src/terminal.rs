@@ -350,6 +350,7 @@ pub struct TerminalBuilder {
     input_handler: Option<InputHandler>,
     canvas_padding_color: u32,
     enable_debug_api: bool,
+    pixel_ratio: f32,
 }
 
 #[derive(Debug)]
@@ -368,6 +369,7 @@ impl TerminalBuilder {
             input_handler: None,
             canvas_padding_color: 0x000000,
             enable_debug_api: false,
+            pixel_ratio: 1.0,
         }
     }
 
@@ -457,14 +459,27 @@ impl TerminalBuilder {
         self
     }
 
+    /// Sets the pixel ratio of the canvas.
+    ///
+    /// To get native-resolution output in HiDPI displays, set this value to `window.devicePixelRatio`.
+    /// This also allows us to render in higher fps sacrificing the resolution.
+    pub fn pixel_ratio(mut self, pixel_ratio: f32) -> Self {
+        self.pixel_ratio = pixel_ratio;
+        self
+    }
+
     /// Builds the terminal with the configured options.
     pub fn build(self) -> Result<Terminal, Error> {
         // setup renderer
         let renderer = match self.canvas {
-            CanvasSource::Id(id) => Renderer::create(&id)?,
-            CanvasSource::Element(element) => Renderer::create_with_canvas(element)?,
+            CanvasSource::Id(id) => Renderer::create(&id, self.pixel_ratio)?,
+            CanvasSource::Element(element) => {
+                Renderer::create_with_canvas(element, self.pixel_ratio)?
+            },
         };
-        let renderer = renderer.canvas_padding_color(self.canvas_padding_color);
+        let renderer = renderer
+            .canvas_padding_color(self.canvas_padding_color)
+            .pixel_ratio(self.pixel_ratio);
 
         // load font atlas
         let gl = renderer.gl();
@@ -479,7 +494,7 @@ impl TerminalBuilder {
 
         // create terminal grid
         let canvas_size = renderer.canvas_size();
-        let mut grid = TerminalGrid::new(gl, atlas, canvas_size)?;
+        let mut grid = TerminalGrid::new(gl, atlas, canvas_size, self.pixel_ratio)?;
         if let Some(fallback) = self.fallback_glyph {
             grid.set_fallback_glyph(&fallback)
         };

@@ -23,6 +23,9 @@ pub struct Renderer {
     canvas: web_sys::HtmlCanvasElement,
     state: GlState,
     canvas_padding_color: (f32, f32, f32),
+    logical_size: (i32, i32),
+    physical_size: (i32, i32),
+    pixel_ratio: f32,
 }
 
 impl Renderer {
@@ -42,9 +45,9 @@ impl Renderer {
     /// # Errors
     /// * `Error::UnableToRetrieveCanvas` - Canvas element not found
     /// * `Error::FailedToRetrieveWebGl2RenderingContext` - WebGL2 not supported or failed to initialize
-    pub fn create(canvas_id: &str) -> Result<Self, Error> {
+    pub fn create(canvas_id: &str, pixel_ratio: f32) -> Result<Self, Error> {
         let canvas = js::get_canvas_by_id(canvas_id)?;
-        Self::create_with_canvas(canvas)
+        Self::create_with_canvas(canvas, pixel_ratio)
     }
 
     /// Sets the background color for the canvas area outside the terminal grid.
@@ -60,6 +63,12 @@ impl Renderer {
         self
     }
 
+    /// Sets the pixel ratio
+    pub fn pixel_ratio(mut self, pixel_ratio: f32) -> Self {
+        self.pixel_ratio = pixel_ratio;
+        self
+    }
+
     /// Creates a new renderer from an existing HTML canvas element.
     ///
     /// This method takes ownership of an existing canvas element and initializes
@@ -72,8 +81,8 @@ impl Renderer {
     /// # Returns
     /// * `Ok(Renderer)` - Successfully created renderer
     /// * `Err(Error)` - Failed to create WebGL context or initialize renderer
-    pub fn create_with_canvas(canvas: HtmlCanvasElement) -> Result<Self, Error> {
-        let (width, height) = (canvas.width(), canvas.height());
+    pub fn create_with_canvas(canvas: HtmlCanvasElement, pixel_ratio: f32) -> Result<Self, Error> {
+        let (width, height) = (canvas.width() as i32, canvas.height() as i32);
 
         // initialize WebGL context
         let gl = js::get_webgl2_context(&canvas)?;
@@ -84,6 +93,12 @@ impl Renderer {
             canvas,
             state,
             canvas_padding_color: (0.0, 0.0, 0.0),
+            logical_size: (width, height),
+            physical_size: (
+                (width as f32 * pixel_ratio).round() as i32,
+                (height as f32 * pixel_ratio).round() as i32,
+            ),
+            pixel_ratio,
         };
         renderer.resize(width as _, height as _);
         Ok(renderer)
@@ -99,9 +114,22 @@ impl Renderer {
     /// * `width` - New canvas width in pixels
     /// * `height` - New canvas height in pixels
     pub fn resize(&mut self, width: i32, height: i32) {
-        self.canvas.set_width(width as u32);
-        self.canvas.set_height(height as u32);
-        self.state.viewport(&self.gl, 0, 0, width, height);
+        self.logical_size = (width, height);
+
+        let physical_width = (width as f32 * self.pixel_ratio).round() as i32;
+        let physical_height = (height as f32 * self.pixel_ratio).round() as i32;
+        self.physical_size = (physical_width, physical_height);
+
+        self.canvas.set_width(physical_width as _);
+        self.canvas.set_height(physical_height as _);
+        self.canvas
+            .style()
+            .set_property("width", &format!("{width}px"));
+        self.canvas
+            .style()
+            .set_property("height", &format!("{height}px"));
+        self.state
+            .viewport(&self.gl, 0, 0, physical_width, physical_height);
     }
 
     /// Clears the framebuffer with the specified color.
@@ -164,7 +192,15 @@ impl Renderer {
     /// # Returns
     /// Tuple containing (width, height) in pixels
     pub fn canvas_size(&self) -> (i32, i32) {
-        (self.canvas.width() as i32, self.canvas.height() as i32)
+        (self.logical_size.0 as i32, self.logical_size.1 as i32)
+    }
+
+    /// Returns the current canvas dimensions as a tuple.
+    ///
+    /// # Returns
+    /// Tuple containing (width, height) in pixels
+    pub fn physical_canvas_size(&self) -> (i32, i32) {
+        (self.physical_size.0 as i32, self.physical_size.1 as i32)
     }
 
     /// Checks if the WebGL context has been lost.
