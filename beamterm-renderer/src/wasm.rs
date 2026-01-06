@@ -413,7 +413,7 @@ impl BeamtermRenderer {
     /// Create a new terminal renderer with the default embedded font atlas.
     #[wasm_bindgen(constructor)]
     pub fn new(canvas_id: &str) -> Result<BeamtermRenderer, JsValue> {
-        Self::with_static_atlas(canvas_id, None)
+        Self::with_static_atlas(canvas_id, None, 1.0)
     }
 
     /// Create a terminal renderer with custom static font atlas data.
@@ -421,14 +421,16 @@ impl BeamtermRenderer {
     /// # Arguments
     /// * `canvas_id` - CSS selector for the canvas element
     /// * `atlas_data` - Binary atlas data (from .atlas file), or null for default
+    /// * `pixel_ratio` - Device pixel ratio for HiDPI displays (e.g., `window.devicePixelRatio`)
     #[wasm_bindgen(js_name = "withStaticAtlas")]
     pub fn with_static_atlas(
         canvas_id: &str,
         atlas_data: Option<js_sys::Uint8Array>,
+        pixel_ratio: f32,
     ) -> Result<BeamtermRenderer, JsValue> {
         console_error_panic_hook::set_once();
 
-        let renderer = Renderer::create(canvas_id, 1.0)
+        let renderer = Renderer::create(canvas_id, pixel_ratio)
             .map_err(|e| JsValue::from_str(&format!("Failed to create renderer: {e}")))?;
 
         let gl = renderer.gl();
@@ -445,7 +447,7 @@ impl BeamtermRenderer {
             .map_err(|e| JsValue::from_str(&format!("Failed to load font atlas: {e}")))?;
 
         let canvas_size = renderer.canvas_size();
-        let terminal_grid = TerminalGrid::new(gl, atlas.into(), canvas_size, 1.0)
+        let terminal_grid = TerminalGrid::new(gl, atlas.into(), canvas_size, pixel_ratio)
             .map_err(|e| JsValue::from_str(&format!("Failed to create terminal grid: {e}")))?;
 
         console::log_1(&"BeamtermRenderer initialized with static atlas".into());
@@ -462,13 +464,15 @@ impl BeamtermRenderer {
     /// * `canvas_id` - CSS selector for the canvas element
     /// * `font_family` - Array of font family names (e.g., `["Hack", "JetBrains Mono"]`)
     /// * `font_size` - Font size in pixels
+    /// * `pixel_ratio` - Device pixel ratio for HiDPI displays (e.g., `window.devicePixelRatio`)
     ///
     /// # Example
     /// ```javascript
     /// const renderer = BeamtermRenderer.withDynamicAtlas(
     ///     "#terminal",
     ///     ["JetBrains Mono", "Fira Code"],
-    ///     16.0
+    ///     16.0,
+    ///     window.devicePixelRatio
     /// );
     /// ```
     #[wasm_bindgen(js_name = "withDynamicAtlas")]
@@ -476,10 +480,11 @@ impl BeamtermRenderer {
         canvas_id: &str,
         font_family: js_sys::Array,
         font_size: f32,
+        pixel_ratio: f32,
     ) -> Result<BeamtermRenderer, JsValue> {
         console_error_panic_hook::set_once();
 
-        let renderer = Renderer::create(canvas_id, 1.0)
+        let renderer = Renderer::create(canvas_id, pixel_ratio)
             .map_err(|e| JsValue::from_str(&format!("Failed to create renderer: {e}")))?;
 
         let font_families: Vec<CompactString> = font_family
@@ -497,7 +502,7 @@ impl BeamtermRenderer {
             .map_err(|e| JsValue::from_str(&format!("Failed to create dynamic atlas: {e}")))?;
 
         let canvas_size = renderer.canvas_size();
-        let terminal_grid = TerminalGrid::new(gl, atlas.into(), canvas_size, 1.0)
+        let terminal_grid = TerminalGrid::new(gl, atlas.into(), canvas_size, pixel_ratio)
             .map_err(|e| JsValue::from_str(&format!("Failed to create terminal grid: {e}")))?;
 
         console::log_1(
