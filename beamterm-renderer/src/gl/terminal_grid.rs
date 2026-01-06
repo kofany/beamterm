@@ -32,6 +32,10 @@ pub struct TerminalGrid {
     terminal_size: (u16, u16),
     /// Size of the canvas in logical pixels
     canvas_size_px: (i32, i32),
+    /// Size of the canvas in physical pixels
+    physical_canvas_size: (i32, i32),
+    /// Size of a cell in physical pixels
+    physical_cell_size: (i32, i32),
     /// Font atlas for rendering text.
     atlas: FontAtlas,
     /// Fallback glyph for missing symbols.
@@ -150,10 +154,21 @@ impl TerminalGrid {
 
         let gpu = GpuResources::new(gl, &cell_pos, &cell_data, cell_size)?;
 
+        let physical_canvas_size = (
+            (screen_size.0 as f32 * pixel_ratio).round() as i32,
+            (screen_size.1 as f32 * pixel_ratio).round() as i32,
+        );
+        let physical_cell_size = (
+            (cell_size.0 as f32 * pixel_ratio).round() as i32,
+            (cell_size.1 as f32 * pixel_ratio).round() as i32,
+        );
+
         let grid = Self {
             gpu,
             terminal_size: (cols as u16, rows as u16),
             canvas_size_px: screen_size,
+            physical_canvas_size,
+            physical_cell_size,
             cells: cell_data,
             atlas,
             fallback_glyph: ' ' as u16,
@@ -247,23 +262,15 @@ impl TerminalGrid {
     /// # Parameters
     /// * `gl` - WebGL2 rendering context
     fn upload_ubo_data(&self, gl: &WebGl2RenderingContext) {
-        let physical_canvas_size = (
-            (self.canvas_size_px.0 as f32 * self.pixel_ratio).round() as i32,
-            (self.canvas_size_px.1 as f32 * self.pixel_ratio).round() as i32,
+        let vertex_ubo = CellVertexUbo::new(
+            self.physical_canvas_size,
+            self.physical_cell_size,
+            self.pixel_ratio,
         );
-        let cell_size = self.cell_size();
-        let physical_cell_size = (
-            (cell_size.0 as f32 * self.pixel_ratio).round() as i32,
-            (cell_size.1 as f32 * self.pixel_ratio).round() as i32,
-        );
-        let vertex_ubo =
-            CellVertexUbo::new(physical_canvas_size, physical_cell_size, self.pixel_ratio);
         self.gpu.ubo_vertex.upload_data(gl, &vertex_ubo);
 
         let fragment_ubo = CellFragmentUbo::new(&self.atlas);
-        self.gpu
-            .ubo_fragment
-            .upload_data(gl, &fragment_ubo);
+        self.gpu.ubo_fragment.upload_data(gl, &fragment_ubo);
     }
 
     /// Returns the total number of cells in the terminal grid.
@@ -463,6 +470,10 @@ impl TerminalGrid {
         canvas_size: (i32, i32),
     ) -> Result<(), Error> {
         self.canvas_size_px = canvas_size;
+        self.physical_canvas_size = (
+            (canvas_size.0 as f32 * self.pixel_ratio).round() as i32,
+            (canvas_size.1 as f32 * self.pixel_ratio).round() as i32,
+        );
 
         // update the UBO with new screen size
         self.upload_ubo_data(gl);
@@ -506,6 +517,15 @@ impl TerminalGrid {
     /// physical pixel dimensions.
     pub fn set_pixel_ratio(&mut self, gl: &WebGl2RenderingContext, pixel_ratio: f32) {
         self.pixel_ratio = pixel_ratio;
+        self.physical_canvas_size = (
+            (self.canvas_size_px.0 as f32 * pixel_ratio).round() as i32,
+            (self.canvas_size_px.1 as f32 * pixel_ratio).round() as i32,
+        );
+        let cell_size = self.cell_size();
+        self.physical_cell_size = (
+            (cell_size.0 as f32 * pixel_ratio).round() as i32,
+            (cell_size.1 as f32 * pixel_ratio).round() as i32,
+        );
         self.upload_ubo_data(gl);
     }
 
