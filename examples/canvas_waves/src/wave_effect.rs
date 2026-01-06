@@ -123,6 +123,21 @@ impl Shader for WaveInterference {
             ));
         });
 
+        // Draw text in the center
+        let text = "Hello this is test";
+        let text_len = text.len() as u16;
+        let center_x = area.x + (area.width.saturating_sub(text_len)) / 2;
+        let center_y = area.y + area.height / 2;
+
+        for (i, ch) in text.chars().enumerate() {
+            let x = center_x + i as u16;
+            if x < area.x + area.width {
+                let cell = buf.cell_mut((x, center_y)).unwrap();
+                cell.set_char(ch);
+                cell.set_fg(ratzilla::ratatui::style::Color::White);
+            }
+        }
+
         None
     }
 
