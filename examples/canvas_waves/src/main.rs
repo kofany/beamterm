@@ -24,6 +24,7 @@ fn main() -> std::io::Result<()> {
 
     let font_atlas = match get_query_param("atlas_size").as_deref() {
         Some("10") => hack_10pt(),
+        Some("30") => hack_30pt(),
         _ => FontAtlasData::default(),
     };
 
@@ -52,4 +53,8 @@ fn main() -> std::io::Result<()> {
 
 fn hack_10pt() -> FontAtlasData {
     FontAtlasData::from_binary(include_bytes!("../data/hack-10pt.atlas")).unwrap()
+}
+
+fn hack_30pt() -> FontAtlasData {
+    FontAtlasData::from_binary(include_bytes!("../data/hack-30pt.atlas")).unwrap()
 }
