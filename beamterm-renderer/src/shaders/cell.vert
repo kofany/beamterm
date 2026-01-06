@@ -51,6 +51,8 @@ void main() {
         floor(float(a_instance_pos.y) * u_cell_size.y + 0.5)  // pixel-snapped
     );
 
-    // Scale vertex position by pixel_ratio to match physical cell size
-    gl_Position = u_projection * vec4(a_pos * u_pixel_ratio + offset, 0.0, 1.0);
+    // Scale vertex position using u_cell_size to match the rounded physical cell size exactly
+    // a_tex_coord is 0-1 normalized, so we can use it to scale by physical cell size
+    vec2 scaled_pos = a_tex_coord * u_cell_size;
+    gl_Position = u_projection * vec4(scaled_pos + offset, 0.0, 1.0);
 }
