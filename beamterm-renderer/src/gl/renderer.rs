@@ -199,7 +199,7 @@ impl Renderer {
     /// # Returns
     /// Tuple containing (width, height) in pixels
     pub fn canvas_size(&self) -> (i32, i32) {
-        (self.logical_size.0 as i32, self.logical_size.1 as i32)
+        self.logical_size
     }
 
     /// Returns the current canvas dimensions as a tuple.
@@ -207,7 +207,7 @@ impl Renderer {
     /// # Returns
     /// Tuple containing (width, height) in pixels
     pub fn physical_canvas_size(&self) -> (i32, i32) {
-        (self.physical_size.0 as i32, self.physical_size.1 as i32)
+        self.physical_size
     }
 
     /// Checks if the WebGL context has been lost.
