@@ -36,23 +36,24 @@ void main() {
 
     // extract colors in vertex shader to avoid ANGLE fragment shader bugs
     v_fg_color = vec3(
-        extract_byte(a_packed_data.x, 2u),
-        extract_byte(a_packed_data.x, 3u),
-        extract_byte(a_packed_data.y, 0u)
-    );
+            extract_byte(a_packed_data.x, 2u),
+            extract_byte(a_packed_data.x, 3u),
+            extract_byte(a_packed_data.y, 0u)
+        );
     v_bg_color = vec3(
-        extract_byte(a_packed_data.y, 1u),
-        extract_byte(a_packed_data.y, 2u),
-        extract_byte(a_packed_data.y, 3u)
-    );
+            extract_byte(a_packed_data.y, 1u),
+            extract_byte(a_packed_data.y, 2u),
+            extract_byte(a_packed_data.y, 3u)
+        );
 
+    // Don't pixel-snap offset to avoid gaps between cells with fractional cell sizes
     vec2 offset = vec2(
-        floor(float(a_instance_pos.x) * u_cell_size.x + 0.5), // pixel-snapped
-        floor(float(a_instance_pos.y) * u_cell_size.y + 0.5)  // pixel-snapped
-    );
+            float(a_instance_pos.x) * u_cell_size.x,
+            float(a_instance_pos.y) * u_cell_size.y
+        );
 
-    // Scale vertex position using u_cell_size to match the rounded physical cell size exactly
-    // a_tex_coord is 0-1 normalized, so we can use it to scale by physical cell size
-    vec2 scaled_pos = a_tex_coord * u_cell_size;
+    // Add small overlap in all directions to prevent gaps from floating point precision
+    float overlap = 0.5;
+    vec2 scaled_pos = a_tex_coord * (u_cell_size + overlap * 2.0) - overlap;
     gl_Position = u_projection * vec4(scaled_pos + offset, 0.0, 1.0);
 }
