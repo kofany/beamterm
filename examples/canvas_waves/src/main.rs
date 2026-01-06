@@ -2,8 +2,8 @@
 
 mod wave_effect;
 
-use ratzilla::ratatui::Terminal;
 use ratzilla::backend::webgl2::{FontAtlasData, WebGl2Backend, WebGl2BackendOptions};
+use ratzilla::ratatui::Terminal;
 use ratzilla::WebRenderer;
 use tachyonfx::{EffectRenderer, IntoEffect};
 use wave_effect::WaveInterference;
@@ -33,6 +33,7 @@ fn main() -> std::io::Result<()> {
             .measure_performance(true)
             .grid_id("container")
             .enable_console_debug_api()
+            .pixel_ratio(0.1),
     )?;
     let terminal = Terminal::new(backend)?;
 
