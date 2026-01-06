@@ -63,12 +63,6 @@ impl Renderer {
         self
     }
 
-    /// Sets the pixel ratio (builder pattern)
-    pub fn pixel_ratio(mut self, pixel_ratio: f32) -> Self {
-        self.pixel_ratio = pixel_ratio;
-        self
-    }
-
     /// Sets the pixel ratio and resizes the canvas accordingly
     pub fn set_pixel_ratio(&mut self, pixel_ratio: f32) {
         self.pixel_ratio = pixel_ratio;

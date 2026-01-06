@@ -489,9 +489,7 @@ impl TerminalBuilder {
                 Renderer::create_with_canvas(element, self.pixel_ratio)?
             },
         };
-        let renderer = renderer
-            .canvas_padding_color(self.canvas_padding_color)
-            .pixel_ratio(self.pixel_ratio);
+        let renderer = renderer.canvas_padding_color(self.canvas_padding_color);
 
         // load font atlas
         let gl = renderer.gl();
