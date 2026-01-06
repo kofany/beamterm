@@ -675,6 +675,16 @@ impl BeamtermRenderer {
 
         Ok(())
     }
+
+    /// Set the pixel ratio for HiDPI displays
+    #[wasm_bindgen(js_name = "setPixelRatio")]
+    pub fn set_pixel_ratio(&mut self, pixel_ratio: f32) {
+        self.renderer.set_pixel_ratio(pixel_ratio);
+        let gl = self.renderer.gl();
+        self.terminal_grid
+            .borrow_mut()
+            .set_pixel_ratio(gl, pixel_ratio);
+    }
 }
 
 // Convert between Rust and WASM types

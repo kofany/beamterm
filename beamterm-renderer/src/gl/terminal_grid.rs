@@ -499,6 +499,15 @@ impl TerminalGrid {
         Ok(())
     }
 
+    /// Sets the pixel ratio for HiDPI displays.
+    ///
+    /// Updates the pixel ratio and re-uploads UBO data to reflect the new
+    /// physical pixel dimensions.
+    pub fn set_pixel_ratio(&mut self, gl: &WebGl2RenderingContext, pixel_ratio: f32) {
+        self.pixel_ratio = pixel_ratio;
+        self.upload_ubo_data(gl);
+    }
+
     /// Recreates all GPU resources after a WebGL context loss.
     ///
     /// This method rebuilds all GPU-side resources (VAO, buffers, shaders, UBOs)
