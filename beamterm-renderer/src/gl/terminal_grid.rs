@@ -256,7 +256,8 @@ impl TerminalGrid {
             (cell_size.0 as f32 * self.pixel_ratio).round() as i32,
             (cell_size.1 as f32 * self.pixel_ratio).round() as i32,
         );
-        let vertex_ubo = CellVertexUbo::new(physical_canvas_size, physical_cell_size);
+        let vertex_ubo =
+            CellVertexUbo::new(physical_canvas_size, physical_cell_size, self.pixel_ratio);
         self.gpu.ubo_vertex.upload_data(gl, &vertex_ubo);
 
         let fragment_ubo = CellFragmentUbo::new(&self.atlas);
@@ -770,7 +771,7 @@ impl Drawable for TerminalGrid {
 /// # Color Format
 /// Colors use the format 0xRRGGBB where:
 /// - RR: Red component
-/// - GG: Green component  
+/// - GG: Green component
 /// - BB: Blue component
 #[derive(Debug, Copy, Clone)]
 pub struct CellData<'a> {
@@ -889,7 +890,7 @@ pub struct CellDynamic {
     ///
     /// # Byte Layout
     /// - `data[0]`: Lower 8 bits of glyph depth/layer index
-    /// - `data[1]`: Upper 8 bits of glyph depth/layer index  
+    /// - `data[1]`: Upper 8 bits of glyph depth/layer index
     /// - `data[2]`: Foreground red component (0-255)
     /// - `data[3]`: Foreground green component (0-255)
     /// - `data[4]`: Foreground blue component (0-255)
@@ -1002,8 +1003,9 @@ impl CellDynamic {
 #[repr(C, align(16))] // std140 layout requires proper alignment
 struct CellVertexUbo {
     pub projection: [f32; 16], // mat4
-    pub cell_size: [f32; 2],   // vec2 - screen cell size
-    pub _padding: [f32; 2],
+    pub cell_size: [f32; 2],   // vec2 - screen cell size (physical)
+    pub pixel_ratio: f32,      // device pixel ratio
+    pub _padding: f32,
 }
 
 #[repr(C, align(16))] // std140 layout requires proper alignment
@@ -1020,13 +1022,14 @@ struct CellFragmentUbo {
 impl CellVertexUbo {
     pub const BINDING_POINT: u32 = 0;
 
-    fn new(canvas_size: (i32, i32), cell_size: (i32, i32)) -> Self {
+    fn new(canvas_size: (i32, i32), cell_size: (i32, i32), pixel_ratio: f32) -> Self {
         let projection =
             Mat4::orthographic_from_size(canvas_size.0 as f32, canvas_size.1 as f32).data;
         Self {
             projection,
             cell_size: [cell_size.0 as f32, cell_size.1 as f32],
-            _padding: [0.0; 2], // padding to ensure proper alignment
+            pixel_ratio,
+            _padding: 0.0,
         }
     }
 }

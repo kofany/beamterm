@@ -13,7 +13,8 @@ layout(location = 3) in uvec2 a_packed_data;
 // uniforms
 layout(std140) uniform VertUbo {
     mat4 u_projection;
-    vec2 u_cell_size; // unpadded cell size in pixels
+    vec2 u_cell_size; // unpadded cell size in pixels (physical)
+    float u_pixel_ratio;
 };
 
 // pass glyph index and pre-extracted colors to fragment shader
@@ -50,5 +51,6 @@ void main() {
         floor(float(a_instance_pos.y) * u_cell_size.y + 0.5)  // pixel-snapped
     );
 
-    gl_Position = u_projection * vec4(a_pos + offset, 0.0, 1.0);
+    // Scale vertex position by pixel_ratio to match physical cell size
+    gl_Position = u_projection * vec4(a_pos * u_pixel_ratio + offset, 0.0, 1.0);
 }
