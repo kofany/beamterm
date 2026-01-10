@@ -48,6 +48,16 @@ use crate::{
     select,
 };
 
+/// Default minimum time in milliseconds between MouseDown and MouseMove
+/// before selection begins. This prevents accidental selections during quick
+/// click-and-gesture operations (e.g., mouse gestures in IRC clients).
+///
+/// Standard GUI frameworks (macOS, Windows, Qt) use similar thresholds
+/// (~150-250ms) to distinguish clicks from drags.
+///
+/// This value can be overridden via [`TerminalBuilder::selection_drag_threshold_ms`].
+pub const DEFAULT_SELECTION_DRAG_THRESHOLD_MS: f64 = 200.0;
+
 /// Type alias for boxed mouse event callback functions.
 ///
 /// Callbacks are invoked synchronously in the browser's event loop
@@ -300,6 +310,7 @@ impl TerminalMouseHandler {
 /// - Automatic clipboard copy on mouse release
 /// - Configurable selection modes (Linear/Block)
 /// - Optional trailing whitespace trimming
+/// - Configurable drag threshold to prevent accidental selections
 pub(crate) struct DefaultSelectionHandler {
     /// Current selection state machine.
     selection_state: Rc<RefCell<SelectionState>>,
@@ -309,6 +320,9 @@ pub(crate) struct DefaultSelectionHandler {
     query_mode: SelectionMode,
     /// Whether to trim trailing whitespace from selections.
     trim_trailing_whitespace: bool,
+    /// Minimum time (ms) between MouseDown and drag before selection activates.
+    /// Prevents accidental selections during quick gestures.
+    drag_threshold_ms: f64,
 }
 
 impl DefaultSelectionHandler {
@@ -318,16 +332,19 @@ impl DefaultSelectionHandler {
     /// * `grid` - Terminal grid for text extraction
     /// * `query_mode` - Selection mode (Linear follows text flow, Block is rectangular)
     /// * `trim_trailing_whitespace` - Whether to remove trailing spaces from selected text
+    /// * `drag_threshold_ms` - Minimum time (ms) before drag activates selection
     pub(crate) fn new(
         grid: Rc<RefCell<TerminalGrid>>,
         query_mode: SelectionMode,
         trim_trailing_whitespace: bool,
+        drag_threshold_ms: f64,
     ) -> Self {
         Self {
             grid,
             selection_state: Rc::new(RefCell::new(SelectionState::Idle)),
             query_mode,
             trim_trailing_whitespace,
+            drag_threshold_ms,
         }
     }
 
@@ -349,6 +366,7 @@ impl DefaultSelectionHandler {
         let selection_state = self.selection_state.clone();
         let query_mode = self.query_mode;
         let trim_trailing = self.trim_trailing_whitespace;
+        let drag_threshold = self.drag_threshold_ms;
 
         Box::new(move |event: TerminalMouseEvent, grid: &TerminalGrid| {
             let mut state = selection_state.borrow_mut();
@@ -361,15 +379,12 @@ impl DefaultSelectionHandler {
                     // while a previous selection was ongoing. if so, we do
                     // nothing and await the MouseUp event.
 
-                    // mouse down always begins a new *potential* selection
-                    if state.is_complete() {
-                        // the existing (completed) selection is replaced with
-                        // a new selection which will be canceled if the mouse
-                        // up event is fired on the same cell.
+                    // mouse down always begins a new *potential* selection.
+                    // we use MaybeSelecting for both idle and complete states
+                    // to ensure single clicks don't trigger selection - only
+                    // actual drag movements should create a selection.
+                    if state.is_idle() || state.is_complete() {
                         state.maybe_selecting(event.col, event.row);
-                    } else if state.is_idle() {
-                        // begins a new selection from a blank state
-                        state.begin_selection(event.col, event.row);
                     }
 
                     let query = select(query_mode)
@@ -379,7 +394,7 @@ impl DefaultSelectionHandler {
                     active_selection.set_query(query);
                 },
                 MouseEventType::MouseMove if state.is_selecting() => {
-                    state.update_selection(event.col, event.row);
+                    state.update_selection(event.col, event.row, drag_threshold);
                     active_selection.update_selection_end((event.col, event.row));
                 },
                 MouseEventType::MouseUp if event.button == 0 => {
@@ -416,35 +431,46 @@ impl DefaultSelectionHandler {
 /// # State Transitions
 /// ```text
 ///        ┌──────────┐
-///    ┌──▶│   Idle   │
-///    │   └────┬─────┘
-///    │        │ begin_selection
-///    │        ▼
-///    │   ┌──────────┐
-///    │   │Selecting │◀────────────┐
-///    │   └────┬─────┘             │
-///    │        │ complete_selection│
-///    │        ▼                   │
-///    │   ┌──────────┐             │
-///    │   │ Complete │             │
-///    │   └────┬─────┘             │
-///    │        │ maybe_selecting   │
-///    │        ▼                   │
-///    │   ┌──────────────┐         │
-///    └───│MaybeSelecting│─────────┘
-/// mouse  └──────────────┘  update_selection
-///   up       
-///          
+///    ┌──▶│   Idle   │◀──────────────────────┐
+///    │   └────┬─────┘                        │
+///    │        │ mouse down                   │ mouse up (same cell)
+///    │        ▼                              │   OR quick gesture
+///    │   ┌──────────────┐                    │
+///    ├───│MaybeSelecting│────────────────────┤
+///    │   └──────┬───────┘                    │
+///    │          │ mouse move (different cell)│
+///    │          │ AND threshold elapsed      │
+///    │          ▼                            │
+///    │   ┌──────────┐                        │
+///    │   │Selecting │◀───────────────────────┤
+///    │   └────┬─────┘  mouse move            │
+///    │        │ mouse up                     │
+///    │        ▼                              │
+///    │   ┌──────────┐                        │
+///    └───│ Complete │────────────────────────┘
+///        └──────────┘  mouse down
 /// ```
-#[derive(Debug, Clone, PartialEq, Eq)]
+///
+/// Key behavior: MouseDown always transitions to MaybeSelecting first.
+/// Selection only becomes "real" when BOTH conditions are met:
+/// 1. Mouse moves to a different cell
+/// 2. At least [`SELECTION_DRAG_THRESHOLD_MS`] has elapsed since MouseDown
+///
+/// This prevents single clicks AND quick gestures from triggering unwanted
+/// selections, while still allowing intentional drag-to-select operations.
+#[derive(Debug, Clone)]
 enum SelectionState {
     /// No selection in progress.
     Idle,
     /// Active selection with start point and current cursor position.
     Selecting { start: (u16, u16), current: Option<(u16, u16)> },
-    /// MouseDown in a cell while selection exists.
-    /// Will become Selecting on MouseMove or Idle on MouseUp.
-    MaybeSelecting { start: (u16, u16) },
+    /// Potential selection started by MouseDown.
+    ///
+    /// Contains the starting cell coordinates and timestamp (from `performance.now()`).
+    /// Transitions to `Selecting` only after [`SELECTION_DRAG_THRESHOLD_MS`] has elapsed
+    /// AND the mouse moves to a different cell. This prevents quick gestures from
+    /// triggering unwanted selections.
+    MaybeSelecting { start: (u16, u16), started_at: f64 },
     /// Selection completed, contains start and end coordinates.
     Complete { start: (u16, u16), end: (u16, u16) },
 }
@@ -461,17 +487,33 @@ impl SelectionState {
 
     /// Updates selection end point during drag.
     ///
-    /// Transitions MaybeSelecting to Selecting if needed.
-    fn update_selection(&mut self, col: u16, row: u16) {
+    /// For `MaybeSelecting` state, transitions to `Selecting` only if:
+    /// 1. The mouse has moved to a different cell, AND
+    /// 2. At least `threshold_ms` has elapsed since MouseDown
+    ///
+    /// This prevents quick click-and-gesture operations from triggering selections.
+    ///
+    /// # Arguments
+    /// * `col` - Current mouse column position
+    /// * `row` - Current mouse row position
+    /// * `threshold_ms` - Minimum elapsed time before selection activates
+    fn update_selection(&mut self, col: u16, row: u16, threshold_ms: f64) {
         use SelectionState::*;
 
         match self {
             Selecting { current, .. } => {
                 *current = Some((col, row));
             },
-            MaybeSelecting { start } => {
+            MaybeSelecting { start, started_at } => {
+                // Only transition to Selecting if threshold time has passed
+                // and mouse moved to a different cell
                 if (col, row) != *start {
-                    *self = Selecting { start: *start, current: Some((col, row)) };
+                    let now = current_time_ms();
+                    let elapsed = now - *started_at;
+
+                    if elapsed >= threshold_ms {
+                        *self = Selecting { start: *start, current: Some((col, row)) };
+                    }
                 }
             },
             _ => {},
@@ -511,11 +553,13 @@ impl SelectionState {
         matches!(self, SelectionState::Idle)
     }
 
-    /// Begins potential new selection while one exists.
+    /// Begins potential new selection.
     ///
-    /// Used when clicking while a selection is complete.
+    /// Records the starting cell and current timestamp. The selection will
+    /// only become active if the mouse moves to a different cell after
+    /// [`SELECTION_DRAG_THRESHOLD_MS`] has elapsed.
     fn maybe_selecting(&mut self, col: u16, row: u16) {
-        *self = SelectionState::MaybeSelecting { start: (col, row) };
+        *self = SelectionState::MaybeSelecting { start: (col, row), started_at: current_time_ms() };
     }
 
     /// Checks if a selection has been completed.
@@ -548,6 +592,18 @@ fn create_mouse_event_closure(
             event_handler.borrow_mut()(terminal_event, &grid_ref);
         }
     }) as Box<dyn FnMut(_)>)
+}
+
+/// Returns the current time in milliseconds using the browser's Performance API.
+///
+/// Uses `performance.now()` which provides sub-millisecond precision and is
+/// monotonic (not affected by system clock changes). Falls back to 0.0 if
+/// the Performance API is unavailable.
+fn current_time_ms() -> f64 {
+    web_sys::window()
+        .and_then(|w| w.performance())
+        .map(|p| p.now())
+        .unwrap_or(0.0)
 }
 
 /// Copies text to the system clipboard using the browser's async clipboard API.
