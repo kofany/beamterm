@@ -196,13 +196,25 @@ impl TerminalMouseHandler {
         let terminal_dimensions = TerminalDimensions::new(cols, rows);
 
         // Create pixel-to-cell coordinate converter
+        // Note: We need to account for pixel_ratio (devicePixelRatio) because:
+        // - event.offset_x()/offset_y() return CSS pixel coordinates
+        // - cell_width/cell_height are in physical pixels (from font atlas)
+        // The pixel_ratio is queried dynamically to support window moves between displays
         let dimensions_ref = terminal_dimensions.clone_ref();
+        let grid_ref = grid.clone();
         let pixel_to_cell = move |event: &web_sys::MouseEvent| -> Option<(u16, u16)> {
             let x = event.offset_x() as f32;
             let y = event.offset_y() as f32;
 
-            let col = (x / cell_width as f32).floor() as u16;
-            let row = (y / cell_height as f32).floor() as u16;
+            // Get current pixel_ratio from grid (supports dynamic DPR changes)
+            let pixel_ratio = grid_ref.borrow().pixel_ratio();
+
+            // Convert physical cell dimensions to CSS pixels for coordinate mapping
+            let css_cell_width = cell_width as f32 / pixel_ratio;
+            let css_cell_height = cell_height as f32 / pixel_ratio;
+
+            let col = (x / css_cell_width).floor() as u16;
+            let row = (y / css_cell_height).floor() as u16;
 
             let (max_cols, max_rows) = *dimensions_ref.borrow();
             if col < max_cols && row < max_rows { Some((col, row)) } else { None }

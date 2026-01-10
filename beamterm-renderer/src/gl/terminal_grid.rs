@@ -194,6 +194,11 @@ impl TerminalGrid {
         self.terminal_size
     }
 
+    /// Returns the current pixel ratio for HiDPI displays.
+    pub fn pixel_ratio(&self) -> f32 {
+        self.pixel_ratio
+    }
+
     /// Returns a mutable reference to the cell data at the specified cell coordinates.
     pub fn cell_data_mut(&mut self, x: u16, y: u16) -> Option<&mut CellDynamic> {
         let (cols, _) = self.terminal_size;
