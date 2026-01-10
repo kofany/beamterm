@@ -2,8 +2,8 @@
 
 mod wave_effect;
 
-use ratzilla::backend::webgl2::{FontAtlasData, WebGl2Backend, WebGl2BackendOptions};
 use ratzilla::ratatui::Terminal;
+use ratzilla::backend::webgl2::{FontAtlasData, WebGl2Backend, WebGl2BackendOptions};
 use ratzilla::WebRenderer;
 use tachyonfx::{EffectRenderer, IntoEffect};
 use wave_effect::WaveInterference;
@@ -24,7 +24,6 @@ fn main() -> std::io::Result<()> {
 
     let font_atlas = match get_query_param("atlas_size").as_deref() {
         Some("10") => hack_10pt(),
-        Some("30") => hack_30pt(),
         _ => FontAtlasData::default(),
     };
 
@@ -34,7 +33,6 @@ fn main() -> std::io::Result<()> {
             .measure_performance(true)
             .grid_id("container")
             .enable_console_debug_api()
-            .pixel_ratio(0.1),
     )?;
     let terminal = Terminal::new(backend)?;
 
@@ -53,8 +51,4 @@ fn main() -> std::io::Result<()> {
 
 fn hack_10pt() -> FontAtlasData {
     FontAtlasData::from_binary(include_bytes!("../data/hack-10pt.atlas")).unwrap()
-}
-
-fn hack_30pt() -> FontAtlasData {
-    FontAtlasData::from_binary(include_bytes!("../data/hack-30pt.atlas")).unwrap()
 }
