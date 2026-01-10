@@ -30,7 +30,7 @@ pub struct TerminalGrid {
     cells: Vec<CellDynamic>,
     /// Terminal size in cells
     terminal_size: (u16, u16),
-    /// Size of the canvas in pixels
+    /// Size of the canvas in logical pixels
     canvas_size_px: (i32, i32),
     /// Font atlas for rendering text.
     atlas: FontAtlas,
@@ -40,6 +40,8 @@ pub struct TerminalGrid {
     selection: SelectionTracker,
     /// Indicates whether there are cells pending flush to the GPU.
     cells_pending_flush: bool,
+    /// Device pixel ratio for HiDPI displays
+    pixel_ratio: f32,
 }
 
 /// GPU resources that need to be recreated after a WebGL context loss.
@@ -138,6 +140,7 @@ impl TerminalGrid {
         gl: &WebGl2RenderingContext,
         atlas: FontAtlas,
         screen_size: (i32, i32),
+        pixel_ratio: f32,
     ) -> Result<Self, Error> {
         let cell_size = atlas.cell_size();
         let (cols, rows) = (screen_size.0 / cell_size.0, screen_size.1 / cell_size.1);
@@ -155,6 +158,7 @@ impl TerminalGrid {
             fallback_glyph: space_glyph,
             selection: SelectionTracker::new(),
             cells_pending_flush: false,
+            pixel_ratio,
         };
 
         grid.upload_ubo_data(gl);
@@ -255,6 +259,8 @@ impl TerminalGrid {
     /// # Parameters
     /// * `gl` - WebGL2 rendering context
     fn upload_ubo_data(&self, gl: &WebGl2RenderingContext) {
+        // Use logical coordinates for projection and cell_size.
+        // WebGL viewport (physical) will automatically scale the output.
         let vertex_ubo = CellVertexUbo::new(self.canvas_size_px, self.cell_size());
         self.gpu.ubo_vertex.upload_data(gl, &vertex_ubo);
 
@@ -499,6 +505,15 @@ impl TerminalGrid {
         self.terminal_size = (cols as u16, rows as u16);
 
         Ok(())
+    }
+
+    /// Sets the pixel ratio for HiDPI displays.
+    ///
+    /// Updates the pixel ratio and re-uploads UBO data to reflect the new
+    /// physical pixel dimensions.
+    pub fn set_pixel_ratio(&mut self, gl: &WebGl2RenderingContext, pixel_ratio: f32) {
+        self.pixel_ratio = pixel_ratio;
+        self.upload_ubo_data(gl);
     }
 
     /// Recreates all GPU resources after a WebGL context loss.
@@ -770,7 +785,7 @@ impl Drawable for TerminalGrid {
 /// # Color Format
 /// Colors use the format 0xRRGGBB where:
 /// - RR: Red component
-/// - GG: Green component  
+/// - GG: Green component
 /// - BB: Blue component
 #[derive(Debug, Copy, Clone)]
 pub struct CellData<'a> {
@@ -889,7 +904,7 @@ pub struct CellDynamic {
     ///
     /// # Byte Layout
     /// - `data[0]`: Lower 8 bits of glyph depth/layer index
-    /// - `data[1]`: Upper 8 bits of glyph depth/layer index  
+    /// - `data[1]`: Upper 8 bits of glyph depth/layer index
     /// - `data[2]`: Foreground red component (0-255)
     /// - `data[3]`: Foreground green component (0-255)
     /// - `data[4]`: Foreground blue component (0-255)
@@ -1002,7 +1017,7 @@ impl CellDynamic {
 #[repr(C, align(16))] // std140 layout requires proper alignment
 struct CellVertexUbo {
     pub projection: [f32; 16], // mat4
-    pub cell_size: [f32; 2],   // vec2 - screen cell size
+    pub cell_size: [f32; 2],   // vec2 - screen cell size (logical)
     pub _padding: [f32; 2],
 }
 
@@ -1026,7 +1041,7 @@ impl CellVertexUbo {
         Self {
             projection,
             cell_size: [cell_size.0 as f32, cell_size.1 as f32],
-            _padding: [0.0; 2], // padding to ensure proper alignment
+            _padding: [0.0, 0.0],
         }
     }
 }

@@ -428,7 +428,7 @@ impl BeamtermRenderer {
     ) -> Result<BeamtermRenderer, JsValue> {
         console_error_panic_hook::set_once();
 
-        let renderer = Renderer::create(canvas_id)
+        let renderer = Renderer::create(canvas_id, 1.0)
             .map_err(|e| JsValue::from_str(&format!("Failed to create renderer: {e}")))?;
 
         let gl = renderer.gl();
@@ -445,7 +445,7 @@ impl BeamtermRenderer {
             .map_err(|e| JsValue::from_str(&format!("Failed to load font atlas: {e}")))?;
 
         let canvas_size = renderer.canvas_size();
-        let terminal_grid = TerminalGrid::new(gl, atlas.into(), canvas_size)
+        let terminal_grid = TerminalGrid::new(gl, atlas.into(), canvas_size, 1.0)
             .map_err(|e| JsValue::from_str(&format!("Failed to create terminal grid: {e}")))?;
 
         console::log_1(&"BeamtermRenderer initialized with static atlas".into());
@@ -479,7 +479,7 @@ impl BeamtermRenderer {
     ) -> Result<BeamtermRenderer, JsValue> {
         console_error_panic_hook::set_once();
 
-        let renderer = Renderer::create(canvas_id)
+        let renderer = Renderer::create(canvas_id, 1.0)
             .map_err(|e| JsValue::from_str(&format!("Failed to create renderer: {e}")))?;
 
         let font_families: Vec<CompactString> = font_family
@@ -497,7 +497,7 @@ impl BeamtermRenderer {
             .map_err(|e| JsValue::from_str(&format!("Failed to create dynamic atlas: {e}")))?;
 
         let canvas_size = renderer.canvas_size();
-        let terminal_grid = TerminalGrid::new(gl, atlas.into(), canvas_size)
+        let terminal_grid = TerminalGrid::new(gl, atlas.into(), canvas_size, 1.0)
             .map_err(|e| JsValue::from_str(&format!("Failed to create terminal grid: {e}")))?;
 
         console::log_1(
@@ -674,6 +674,16 @@ impl BeamtermRenderer {
         }
 
         Ok(())
+    }
+
+    /// Set the pixel ratio for HiDPI displays
+    #[wasm_bindgen(js_name = "setPixelRatio")]
+    pub fn set_pixel_ratio(&mut self, pixel_ratio: f32) {
+        self.renderer.set_pixel_ratio(pixel_ratio);
+        let gl = self.renderer.gl();
+        self.terminal_grid
+            .borrow_mut()
+            .set_pixel_ratio(gl, pixel_ratio);
     }
 }
 
