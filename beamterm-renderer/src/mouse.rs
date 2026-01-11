@@ -289,8 +289,10 @@ impl TerminalMouseHandler {
         // Create pixel-to-cell coordinate converter
         let metrics_ref = metrics.clone_ref();
         let pixel_to_cell = move |event: &web_sys::MouseEvent| -> Option<(u16, u16)> {
-            let x = event.offset_x() as f32;
-            let y = event.offset_y() as f32;
+            // Convert CSS pixels to physical pixels for HiDPI displays
+            let dpr = web_sys::window().map(|w| w.device_pixel_ratio()).unwrap_or(1.0) as f32;
+            let x = event.offset_x() as f32 * dpr;
+            let y = event.offset_y() as f32 * dpr;
 
             let m = metrics_ref.borrow();
             let col = (x / m.cell_width as f32).floor() as u16;
