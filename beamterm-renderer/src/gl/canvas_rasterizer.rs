@@ -230,9 +230,40 @@ impl CanvasRasterizer {
         Ok(results)
     }
 
-    /// Measures cell size by rendering "█" and scanning actual pixel bounds.
-    /// This is more accurate than text metrics which can have rounding issues.
+    /// Measures cell size using TextMetrics API for accurate font-level metrics.
+    /// Falls back to pixel scanning if TextMetrics returns invalid values.
     fn measure_cell_metrics(
+        render_ctx: &OffscreenCanvasRenderingContext2d,
+    ) -> Result<CellMetrics, Error> {
+        // Try TextMetrics API first (more accurate for all glyphs)
+        let metrics = render_ctx
+            .measure_text("█")
+            .map_err(|e| Error::rasterizer_measure_failed(js_error_string(&e)))?;
+
+        // Use font-level metrics which cover ALL glyphs in the font
+        // (including diacritics, ascenders, descenders)
+        let font_ascent = metrics.font_bounding_box_ascent();
+        let font_descent = metrics.font_bounding_box_descent();
+        let width = metrics.width().ceil() as u32;
+
+        // Validate TextMetrics - some browsers may return 0
+        if font_ascent > 0.0 && font_descent >= 0.0 && width > 0 {
+            let height = (font_ascent + font_descent).ceil() as u32;
+
+            return Ok(CellMetrics {
+                padded_width: width + 2 * PADDING,
+                padded_height: height + 2 * PADDING,
+                ascent: font_ascent,
+            });
+        }
+
+        // Fallback: pixel scanning method for older browsers
+        Self::measure_cell_metrics_legacy(render_ctx)
+    }
+
+    /// Legacy method: measures cell size by rendering "█" and scanning pixel bounds.
+    /// Used as fallback when TextMetrics API is unavailable or returns invalid values.
+    fn measure_cell_metrics_legacy(
         render_ctx: &OffscreenCanvasRenderingContext2d,
     ) -> Result<CellMetrics, Error> {
         let buffer_size = 128u32;
@@ -277,10 +308,14 @@ impl CanvasRasterizer {
         // (draw_offset - min_y) gives pixels above the draw point
         let ascent = draw_offset - min_y as f64;
 
+        // Add safety margin for glyphs with diacritics (legacy fallback only)
+        let height_with_margin = ((height as f64) * 1.15).ceil() as u32;
+        let ascent_with_margin = ascent * 1.15;
+
         Ok(CellMetrics {
             padded_width: width + 2 * PADDING,
-            padded_height: height + 2 * PADDING,
-            ascent,
+            padded_height: height_with_margin + 2 * PADDING,
+            ascent: ascent_with_margin,
         })
     }
 }
