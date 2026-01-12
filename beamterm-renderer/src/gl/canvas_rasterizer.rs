@@ -230,18 +230,61 @@ impl CanvasRasterizer {
         Ok(results)
     }
 
-    /// Measures cell size by rendering "█" and scanning actual pixel bounds.
-    /// This is more accurate than text metrics which can have rounding issues.
+    /// Measures cell size by scanning pixel bounds for a set of representative characters.
+    /// Uses multiple test characters to ensure proper sizing for glyphs with:
+    /// - Diacritics (Ą, Ż, ż) - characters with marks above/below
+    /// - Descenders (g, y) - characters extending below baseline
+    /// - Punctuation (>, <, ]) - may have different bounds than block
     fn measure_cell_metrics(
         render_ctx: &OffscreenCanvasRenderingContext2d,
     ) -> Result<CellMetrics, Error> {
+        // Test characters covering various glyph bounds:
+        // "█" - reference full block
+        // "Ą" - ogonek below (Polish)
+        // "Ż" - dot above (Polish)
+        // "g", "y" - descenders
+        // ">", "<", "]" - punctuation that may clip
+        const TEST_CHARS: &[&str] = &["█", "Ą", "Ż", "g", "y", ">", "<", "]"];
+
+        let mut max_width = 0u32;
+        let mut max_height = 0u32;
+        let mut max_ascent = 0.0f64;
+
+        for ch in TEST_CHARS {
+            if let Some((width, height, ascent)) = Self::measure_single_char(render_ctx, ch)? {
+                max_width = max_width.max(width);
+                max_height = max_height.max(height);
+                max_ascent = max_ascent.max(ascent);
+            }
+        }
+
+        // Fallback if no characters rendered (shouldn't happen)
+        if max_width == 0 || max_height == 0 {
+            return Err(Error::rasterizer_measure_failed(
+                "Failed to measure any test characters".to_string(),
+            ));
+        }
+
+        Ok(CellMetrics {
+            padded_width: max_width + 2 * PADDING,
+            padded_height: max_height + 2 * PADDING,
+            ascent: max_ascent,
+        })
+    }
+
+    /// Measures a single character by rendering and scanning pixel bounds.
+    /// Returns (width, height, ascent) or None if character has no visible pixels.
+    fn measure_single_char(
+        render_ctx: &OffscreenCanvasRenderingContext2d,
+        ch: &str,
+    ) -> Result<Option<(u32, u32, f64)>, Error> {
         let buffer_size = 128u32;
-        let draw_offset = 16.0; // Draw with offset to capture any negative positioning
+        let draw_offset = 32.0; // Larger offset to capture ascenders/descenders
 
         render_ctx.clear_rect(0.0, 0.0, buffer_size as f64, buffer_size as f64);
         render_ctx.set_fill_style_str("white");
         render_ctx
-            .fill_text("█", draw_offset, draw_offset)
+            .fill_text(ch, draw_offset, draw_offset)
             .map_err(|e| Error::rasterizer_measure_failed(js_error_string(&e)))?;
 
         let image_data = render_ctx
@@ -250,7 +293,7 @@ impl CanvasRasterizer {
 
         let pixels = image_data.data();
 
-        // infer good-enough pixel bounds (where alpha > threshold)
+        // Scan for pixel bounds (where alpha > threshold)
         const ALPHA_THRESHOLD: u8 = 128;
         let mut min_x = buffer_size;
         let mut max_x = 0u32;
@@ -269,19 +312,18 @@ impl CanvasRasterizer {
             }
         }
 
-        // calculate dimensions from pixel bounds
+        // Character has no visible pixels
+        if min_x > max_x || min_y > max_y {
+            return Ok(None);
+        }
+
         let width = max_x - min_x + 1;
         let height = max_y - min_y + 1;
 
-        // ascent is how far above the draw position the glyph started
-        // (draw_offset - min_y) gives pixels above the draw point
+        // Ascent: how far above the draw position the glyph started
         let ascent = draw_offset - min_y as f64;
 
-        Ok(CellMetrics {
-            padded_width: width + 2 * PADDING,
-            padded_height: height + 2 * PADDING,
-            ascent,
-        })
+        Ok(Some((width, height, ascent)))
     }
 }
 
