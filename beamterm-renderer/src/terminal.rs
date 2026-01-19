@@ -682,7 +682,15 @@ enum InputHandler {
 }
 
 /// Checks if a grapheme is double-width (emoji or fullwidth character).
+///
+/// Uses both unicode_width and emoji detection because some emoji
+/// (e.g., ⛈ U+26C8) have unicode_width=1 but render as double-width.
 pub(crate) fn is_double_width(grapheme: &str) -> bool {
+    // Check if it's an emoji (always double-width in terminal)
+    if emojis::get(grapheme).is_some() {
+        return true;
+    }
+    // Fall back to unicode_width for CJK and other fullwidth chars
     grapheme.len() > 1 && grapheme.width() == 2
 }
 

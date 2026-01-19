@@ -323,6 +323,15 @@ mod tests {
         // single-width
         assert!(!is_double_width("A"));
         assert!(!is_double_width("→"));
+
+        // Emoji with unicode_width=1 should still be double-width (fixed via emojis crate)
+        assert!(is_double_width("⛈")); // U+26C8 thunder cloud - unicode_width=1 but is emoji
+        assert!(is_double_width("🚀")); // U+1F680 rocket - unicode_width=2
+        assert!(is_double_width("❄")); // U+2744 snowflake - unicode_width=1 but is emoji
+
+        // Mathematical arrows are NOT emoji - width determined by unicode_width only
+        // (⥤ U+2964 has unicode_width=1, font rendering issues are font bugs not ours)
+        assert!(!is_double_width("⥤"));
     }
 
     #[test]
