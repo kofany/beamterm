@@ -767,6 +767,30 @@ impl BeamtermRenderer {
         Ok(())
     }
 
+    /// Sets the viewport offset for scrollback support.
+    ///
+    /// When the terminal viewport is scrolled up to view history, call this method
+    /// with the number of rows scrolled. Mouse selection coordinates will be
+    /// adjusted to correctly map to scrollback buffer positions.
+    ///
+    /// # Arguments
+    /// * `offset` - Number of rows the viewport is scrolled (0 = at bottom/normal view)
+    ///
+    /// # Example
+    /// ```javascript
+    /// // User scrolled up 50 lines to view history
+    /// renderer.setViewportOffset(50);
+    ///
+    /// // User scrolled back to bottom
+    /// renderer.setViewportOffset(0);
+    /// ```
+    #[wasm_bindgen(js_name = "setViewportOffset")]
+    pub fn set_viewport_offset(&mut self, offset: u16) {
+        if let Some(mouse_handler) = &mut self.mouse_handler {
+            mouse_handler.set_viewport_offset(offset);
+        }
+    }
+
     /// Updates the mouse handler with current grid metrics (cell size and dimensions).
     fn update_mouse_handler_metrics(&mut self) {
         if let Some(mouse_handler) = &mut self.mouse_handler {

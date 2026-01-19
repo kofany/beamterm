@@ -47,6 +47,12 @@ pub(crate) struct TerminalMetricsInner {
     pub rows: u16,
     pub cell_width: i32,
     pub cell_height: i32,
+    /// Viewport offset for scrollback support.
+    ///
+    /// When the terminal is scrolled up to view history, this offset indicates
+    /// how many rows the viewport is shifted. Mouse selection coordinates are
+    /// adjusted by this value to correctly map to scrollback buffer positions.
+    pub viewport_offset: u16,
 }
 
 impl SelectionTracker {
@@ -133,6 +139,7 @@ impl TerminalMetrics {
                 rows,
                 cell_width,
                 cell_height,
+                viewport_offset: 0,
             })),
         }
     }
@@ -141,7 +148,29 @@ impl TerminalMetrics {
     ///
     /// Should be called whenever the terminal is resized or the font atlas changes.
     pub fn set(&self, cols: u16, rows: u16, cell_width: i32, cell_height: i32) {
-        *self.inner.borrow_mut() = TerminalMetricsInner { cols, rows, cell_width, cell_height };
+        let mut inner = self.inner.borrow_mut();
+        inner.cols = cols;
+        inner.rows = rows;
+        inner.cell_width = cell_width;
+        inner.cell_height = cell_height;
+        // viewport_offset is preserved across resizes
+    }
+
+    /// Sets the viewport offset for scrollback support.
+    ///
+    /// When the terminal viewport is scrolled up to view history, this offset
+    /// should be set to the number of rows scrolled. Selection coordinates
+    /// will be adjusted to correctly map to scrollback buffer positions.
+    ///
+    /// # Arguments
+    /// * `offset` - Number of rows the viewport is scrolled (0 = at bottom)
+    pub fn set_viewport_offset(&self, offset: u16) {
+        self.inner.borrow_mut().viewport_offset = offset;
+    }
+
+    /// Returns the current viewport offset.
+    pub fn viewport_offset(&self) -> u16 {
+        self.inner.borrow().viewport_offset
     }
 
     /// Returns all metrics: (cols, rows, cell_width, cell_height).

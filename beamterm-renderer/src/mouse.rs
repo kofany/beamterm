@@ -294,9 +294,15 @@ impl TerminalMouseHandler {
 
             let m = metrics_ref.borrow();
             let col = (x / m.cell_width as f32).floor() as u16;
-            let row = (y / m.cell_height as f32).floor() as u16;
+            let screen_row = (y / m.cell_height as f32).floor() as u16;
 
-            if col < m.cols && row < m.rows { Some((col, row)) } else { None }
+            if col < m.cols && screen_row < m.rows {
+                // Add viewport offset to convert screen row to scrollback row
+                let row = screen_row + m.viewport_offset;
+                Some((col, row))
+            } else {
+                None
+            }
         };
 
         // Create event handlers
@@ -368,6 +374,18 @@ impl TerminalMouseHandler {
     pub fn update_metrics(&mut self, cols: u16, rows: u16, cell_width: i32, cell_height: i32) {
         self.metrics
             .set(cols, rows, cell_width, cell_height);
+    }
+
+    /// Sets the viewport offset for scrollback support.
+    ///
+    /// When the terminal viewport is scrolled up to view history, this offset
+    /// should be set to the number of rows scrolled. Mouse selection coordinates
+    /// will be adjusted to correctly map to scrollback buffer positions.
+    ///
+    /// # Arguments
+    /// * `offset` - Number of rows the viewport is scrolled (0 = at bottom)
+    pub fn set_viewport_offset(&mut self, offset: u16) {
+        self.metrics.set_viewport_offset(offset);
     }
 }
 
