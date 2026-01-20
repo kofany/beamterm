@@ -4,7 +4,7 @@ Fork repozytorium [junkdog/beamterm](https://github.com/junkdog/beamterm) z popr
 
 ## Aktywny branch
 
-**`fix/selection-idle-state`** - główny branch z poprawkami:
+**`beamterm-terx`** - główny branch z poprawkami:
 - HiDPI selection fix (mnożenie koordynat myszy przez DPR w `mouse.rs`)
 - Selection drag threshold
 - Dynamic font atlas fixes
@@ -13,13 +13,14 @@ Fork repozytorium [junkdog/beamterm](https://github.com/junkdog/beamterm) z popr
 
 ### Wymagania
 - Rust + wasm-pack
-- npm login z granular token (TOTP/passkey nie wystarczy do publish)
+- npm **Automation token** (Classic Token → Automation) - omija 2FA
+- Granular token NIE działa jeśli masz 2FA włączone
 
 ### Kroki publikacji
 
 ```bash
 # 1. Upewnij się że jesteś na właściwym branchu
-git checkout fix/selection-idle-state
+git checkout beamterm-terx
 
 # 2. Zrób zmiany w kodzie (np. w beamterm-renderer/src/)
 
