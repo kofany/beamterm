@@ -1,0 +1,2133 @@
+diff --git a/CHANGELOG.md b/CHANGELOG.md
+index 85da877..a0b23ed 100644
+--- a/CHANGELOG.md
++++ b/CHANGELOG.md
+@@ -2,39 +2,12 @@
+ 
+ All notable changes to this project will be documented in this file.
+ 
+-## [beamterm-v0.15.0] - 2026-02-17
+-
+-### 🚀 Features
+-
+-- *(terminal)* Detect url with `Terminal::find_url_at()` (#87)
+-- *(mouse)* Extend mouse events with `Click`, `MouseEnter` and `MouseLeave` (#88)
+-
+-### 💼 Other
+-
+-- *(js)* Add opengl context loss/recovery button to atlas replacement example
+-- *(deps)* Bump clap from 4.5.54 to 4.5.56 (#90)
+-- *(deps)* Bump bitflags from 2.10.0 to 2.11.0 (#94)
+-- *(deps)* Bump clap from 4.5.56 to 4.5.58 (#93)
+-
+-### 🐛 Bug Fixes
+-
+-- *(js)* Recovery from opengl context loss was missing
+-- *(atlas)* Correct emoji classification for text-presentation-by-default glyphs
+-
+-### ⚙️ Miscellaneous Tasks
+-
+-- *(atlas)* Expand emoji set for default atlas
+-
+ ## [beamterm-v0.14.0] - 2026-01-27
+ 
+ ### 🚀 Features
+ 
+ - *(renderer)* Add `auto_resize_canvas_css` option to `TerminalBuilder` (#85)
+ 
+-### ⚙️ Miscellaneous Tasks
+-
+-- Release beamterm 0.14.0
+-
+ ## [beamterm-v0.13.0] - 2026-01-25
+ 
+ ### 🚀 Features
+diff --git a/CLAUDE.md b/CLAUDE.md
+new file mode 100644
+index 0000000..72debd1
+--- /dev/null
++++ b/CLAUDE.md
+@@ -0,0 +1,85 @@
++# beamterm - kofany fork
++
++Fork repozytorium [junkdog/beamterm](https://github.com/junkdog/beamterm) z poprawkami dla terX.
++
++## Aktywny branch
++
++**`beamterm-terx`** - główny branch z poprawkami:
++- HiDPI selection fix (mnożenie koordynat myszy przez DPR w `mouse.rs`)
++- Selection drag threshold
++- Dynamic font atlas fixes
++
++## Publikacja do npm (@kofany/beamterm-terx)
++
++### Wymagania
++- Rust + wasm-pack
++- npm Granular token z wyłączonym 2FA (w ~/.npmrc)
++- Token jest w `~/.npmrc` - NIE commituj go do git!
++
++### Kroki publikacji
++
++```bash
++# 1. Upewnij się że jesteś na właściwym branchu
++git checkout beamterm-terx
++
++# 2. Zrób zmiany w kodzie (np. w beamterm-renderer/src/)
++
++# 3. Clean build z js-api feature
++cd beamterm-renderer
++rm -rf dist pkg target
++wasm-pack build --target bundler --out-dir dist/bundler -- --features js-api
++
++# 4. Zaktualizuj package.json (nazwa i wersja)
++# dist/bundler/package.json powinien mieć:
++#   "name": "@kofany/beamterm-terx"
++#   "version": "0.12.X"  <- zwiększ wersję!
++
++# 5. Publikuj
++cd dist/bundler
++npm publish --access public
++```
++
++### Aktualizacja package.json po buildzie
++
++wasm-pack generuje package.json z Cargo.toml. Po każdym buildzie musisz ręcznie zmienić:
++
++```json
++{
++  "name": "@kofany/beamterm-terx",
++  "version": "0.12.X",
++  "repository": {
++    "type": "git",
++    "url": "https://github.com/kofany/beamterm"
++  },
++  "publishConfig": {
++    "access": "public"
++  }
++}
++```
++
++### Po publikacji
++
++W terX wystarczy:
++```bash
++bun update @kofany/beamterm-terx
++```
++
++## Kluczowe pliki
++
++| Plik | Opis |
++|------|------|
++| `beamterm-renderer/src/mouse.rs` | Obsługa myszy, selekcja, HiDPI fix |
++| `beamterm-renderer/src/wasm.rs` | Eksporty JS API |
++| `beamterm-renderer/src/terminal.rs` | Główna struktura renderera |
++| `beamterm-renderer/Cargo.toml` | Feature `js-api` wymagany do budowania |
++
++## HiDPI Fix (mouse.rs)
++
++Kluczowa poprawka w `pixel_to_cell`:
++```rust
++let dpr = web_sys::window().map(|w| w.device_pixel_ratio()).unwrap_or(1.0) as f32;
++let x = event.offset_x() as f32 * dpr;  // CSS → Physical
++let y = event.offset_y() as f32 * dpr;
++```
++
++Mouse events zwracają CSS pixels, cell dimensions są w physical pixels.
+diff --git a/Cargo.lock b/Cargo.lock
+index 3dedeba..5d4eb59 100644
+--- a/Cargo.lock
++++ b/Cargo.lock
+@@ -99,7 +99,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "beamterm-atlas"
+-version = "0.15.0"
++version = "0.14.0"
+ dependencies = [
+  "beamterm-data",
+  "clap",
+@@ -120,7 +120,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "beamterm-data"
+-version = "0.15.0"
++version = "0.14.0"
+ dependencies = [
+  "compact_str",
+  "miniz_oxide 0.9.0",
+@@ -128,7 +128,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "beamterm-renderer"
+-version = "0.15.0"
++version = "0.14.0"
+ dependencies = [
+  "beamterm-data",
+  "bitflags",
+@@ -151,9 +151,9 @@ dependencies = [
+ 
+ [[package]]
+ name = "bitflags"
+-version = "2.11.0"
++version = "2.10.0"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "843867be96c8daad0d758b57df9392b6d8d271134fce549de6ce169ff98a92af"
++checksum = "812e12b5285cc515a9c72a5c1d3b6d46a19dac5acfef5265968c166106e31dd3"
+ 
+ [[package]]
+ name = "bumpalo"
+@@ -198,9 +198,9 @@ checksum = "2fd1289c04a9ea8cb22300a459a72a385d7c73d3259e2ed7dcb2af674838cfa9"
+ 
+ [[package]]
+ name = "clap"
+-version = "4.5.58"
++version = "4.5.54"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "63be97961acde393029492ce0be7a1af7e323e6bae9511ebfac33751be5e6806"
++checksum = "c6e6ff9dcd79cff5cd969a17a545d79e84ab086e444102a591e288a8aa3ce394"
+ dependencies = [
+  "clap_builder",
+  "clap_derive",
+@@ -208,9 +208,9 @@ dependencies = [
+ 
+ [[package]]
+ name = "clap_builder"
+-version = "4.5.58"
++version = "4.5.54"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "7f13174bda5dfd69d7e947827e5af4b0f2f94a4a3ee92912fba07a66150f21e2"
++checksum = "fa42cf4d2b7a41bc8f663a7cab4031ebafa1bf3875705bfaf8466dc60ab52c00"
+ dependencies = [
+  "anstream",
+  "anstyle",
+@@ -220,9 +220,9 @@ dependencies = [
+ 
+ [[package]]
+ name = "clap_derive"
+-version = "4.5.55"
++version = "4.5.49"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "a92793da1a46a5f2a02a6f4c46c6496b28c43638adea8306fcb0caa1634f24e5"
++checksum = "2a0b5487afeab2deb2ff4e03a807ad1a03ac532ff5a2cee5d86884440c7f7671"
+ dependencies = [
+  "heck",
+  "proc-macro2",
+@@ -232,9 +232,9 @@ dependencies = [
+ 
+ [[package]]
+ name = "clap_lex"
+-version = "1.0.0"
++version = "0.7.5"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "3a822ea5bc7590f9d40f1ba12c0dc3c2760f3482c6984db1573ad11031420831"
++checksum = "b94f61472cee1439c0b966b47e3aca9ae07e45d070759512cd390ea2bebc6675"
+ 
+ [[package]]
+ name = "color-eyre"
+diff --git a/Cargo.toml b/Cargo.toml
+index 3f541dc..863a970 100644
+--- a/Cargo.toml
++++ b/Cargo.toml
+@@ -10,7 +10,7 @@ exclude = [
+ ]
+ 
+ [workspace.package]
+-version = "0.15.0"
++version = "0.14.0"
+ edition = "2024"
+ license = "MIT"
+ authors = ["Adrian Papari <junkdog@angelhill.net>"]
+@@ -21,7 +21,7 @@ keywords = ["terminal", "webgl", "wasm", "rendering", "gpu"]
+ categories = ["graphics", "wasm", "web-programming"]
+ 
+ [workspace.dependencies]
+-bitflags = "2.11"
++bitflags = "2.10"
+ compact_str = "0.9.0"
+ console_error_panic_hook = "0.1.7"
+ emojis = "0.8.0"
+diff --git a/README.md b/README.md
+index 919b086..dc670e1 100644
+--- a/README.md
++++ b/README.md
+@@ -56,6 +56,46 @@ versioned format with header validation and cross-platform encoding.
+ **`beamterm-renderer`** - The WebGL2 rendering engine. Implements instanced rendering with optimized
+ buffer management and state tracking for consistent sub-millisecond performance.
+ 
++
++## Font Atlas Types
++
++beamterm supports two font atlas strategies with distinct trade-offs:
++
++| Aspect            | Static Atlas                           | Dynamic Atlas                                |
++|-------------------|----------------------------------------|----------------------------------------------|
++| **Font source**   | Pre-generated `.atlas` file            | Any system or web font                       |
++| **Glyph lookup**  | ASCII: direct cast; non-ASCII: HashMap | ASCII Normal: direct cast; others: LRU cache |
++| **Rasterization** | Build-time (via `beamterm-atlas` CLI)  | On-demand via browser Canvas API             |
++| **Capacity**      | 1024 glyphs × 4 styles + 4096 emoji    | 2048 normal + 1024 wide; LRU evicts inactive |
++| **HiDPI scaling** | Snapped (0.5×, 1×, 2×, 3×...)          | Re-rasterizes at exact DPR                   |
++
++**Static Atlas** is the default. All glyphs are pre-rasterized and immediately available. ASCII
++characters use a direct bit-cast for lookup; non-ASCII characters fall back to a HashMap. Because
++glyphs are fixed at build time, HiDPI scaling uses discrete steps to preserve sharpness.
++
++**Dynamic Atlas** rasterizes glyphs on first use via the browser's Canvas API. ASCII characters
++in Normal style bypass the cache; styled ASCII and all non-ASCII characters go through
++an LRU cache. When slots fill up, least-recently-used glyphs are evicted and re-rasterized on
++next access. Glyphs are re-rasterized at the new resolution whenever the device pixel ratio changes.
++
++```rust
++// Static atlas (default, or with custom atlas)
++let terminal = Terminal::builder("#canvas").build()?;
++let terminal = Terminal::builder("#canvas")
++    .font_atlas(FontAtlasData::from_binary(include_bytes!("custom.atlas"))?)
++    .build()?;
++
++// Dynamic atlas
++let terminal = Terminal::builder("#canvas")
++    .dynamic_font_atlas(&["JetBrains Mono", "Fira Code"], 16.0)
++    .build()?;
++
++// Switch atlas at runtime
++terminal.replace_with_dynamic_atlas(&["Hack", "monospace"], 14.0)?;
++terminal.replace_with_static_atlas(new_atlas_data)?;
++```
++
++
+ ## Architecture Overview
+ 
+ The architecture leverages GPU instancing to reuse a single quad geometry across all terminal cells,
+@@ -122,6 +162,10 @@ let terminal = Terminal::builder("#canvas")
+ Main rendering component managing the terminal display. Handles shader programs, cell data, GPU
+ buffers, and rendering state.
+ 
++### FontAtlas
++Manages the 2D texture array containing all font glyphs. Provides character-to-glyph ID
++mapping with fast ASCII optimization. Supports loading default or custom font atlases.
++
+ ### Cell Data Structure
+ 
+ Each terminal cell requires:
+@@ -131,48 +175,10 @@ Each terminal cell requires:
+ - **fg/bg**: Colors as 32-bit ARGB values (`0xAARRGGBB`)
+ 
+ 
+-## Font Atlas Types
+-
+-beamterm supports two font atlas strategies with distinct trade-offs:
+-
+-| Aspect            | Static Atlas                           | Dynamic Atlas                                |
+-|-------------------|----------------------------------------|----------------------------------------------|
+-| **Font source**   | Pre-generated `.atlas` file            | Any system or web font                       |
+-| **Glyph lookup**  | ASCII: direct cast; non-ASCII: HashMap | ASCII Normal: direct cast; others: LRU cache |
+-| **Rasterization** | Build-time (via `beamterm-atlas` CLI)  | On-demand via browser Canvas API             |
+-| **Capacity**      | 1024 glyphs × 4 styles + 2048 emoji    | 2048 normal + 1024 wide; LRU evicts inactive |
+-| **HiDPI scaling** | Snapped (0.5×, 1×, 2×, 3×...)          | Re-rasterizes at exact DPR                   |
+-
+-**Static Atlas** is the default. All glyphs are pre-rasterized and immediately available. ASCII
+-characters (0-127) use direct bit manipulation (`char_code | style_bits`) for zero-overhead glyph
+-lookup; non-ASCII characters fall back to a HashMap. Because glyphs are fixed at build time, HiDPI
+-scaling uses discrete steps to preserve sharpness.
+-
+-**Dynamic Atlas** rasterizes glyphs on first use via the browser's Canvas API. ASCII characters
+-in Normal style bypass the cache; styled ASCII and all non-ASCII characters go through
+-an LRU cache. When slots fill up, least-recently-used glyphs are evicted and re-rasterized on
+-next access. Glyphs are re-rasterized at the new resolution whenever the device pixel ratio changes.
+-
+-```rust
+-// Static atlas (default, or with custom atlas)
+-let terminal = Terminal::builder("#canvas").build()?;
+-let terminal = Terminal::builder("#canvas")
+-    .font_atlas(FontAtlasData::from_binary(include_bytes!("custom.atlas"))?)
+-    .build()?;
+-
+-// Dynamic atlas
+-let terminal = Terminal::builder("#canvas")
+-    .dynamic_font_atlas(&["JetBrains Mono", "Fira Code"], 16.0)
+-    .build()?;
+-
+-// Switch atlas at runtime
+-terminal.replace_with_dynamic_atlas(&["Hack", "monospace"], 14.0)?;
+-terminal.replace_with_static_atlas(new_atlas_data)?;
+-```
+-
+-### Texture Array Layout
++## Font Atlas 2D Texture Array Architecture
+ 
+ Both atlas types use a WebGL 2D texture array where each layer contains a 1×32 grid of glyphs.
++However, they differ significantly in how glyphs are addressed and organized.
+ 
+ ### Static Atlas: Style-Encoded Glyph IDs
+ 
+@@ -247,6 +253,13 @@ The atlas stores these as left/right half-pairs with consecutive glyph IDs:
+ Both types are rasterized at 2× cell width, then split into left (even ID) and right (odd ID) halves.
+ 
+ 
++### ASCII Optimization
++
++Non-ASCII character lookups use a HashMap to find their glyph IDs. ASCII characters (0-127) bypass
++the HashMap lookup entirely through direct bit manipulation. For ASCII input, the glyph ID is computed
++as `char_code | style_bits`, providing zero-overhead character mapping. This approach optimizes for
++the common case while maintaining full Unicode capability.
++
+ ### Dynamic Atlas: Flat Slot Addressing
+ 
+ The dynamic atlas uses a simpler flat addressing scheme with 12-bit slot IDs. Font styles are
+diff --git a/beamterm-atlas/Cargo.toml b/beamterm-atlas/Cargo.toml
+index aed6994..96142fa 100644
+--- a/beamterm-atlas/Cargo.toml
++++ b/beamterm-atlas/Cargo.toml
+@@ -13,7 +13,7 @@ keywords.workspace = true
+ categories.workspace = true
+ 
+ [dependencies]
+-beamterm-data = { path = "../beamterm-data", version = "0.15.0" }
++beamterm-data = { path = "../beamterm-data", version = "0.14.0" }
+ clap = { version = "4.5", features = ["derive"] }
+ color-eyre = "0.6.5"
+ colored = "3.1.1"
+diff --git a/beamterm-atlas/src/grapheme.rs b/beamterm-atlas/src/grapheme.rs
+index a31eb46..f923d75 100644
+--- a/beamterm-atlas/src/grapheme.rs
++++ b/beamterm-atlas/src/grapheme.rs
+@@ -91,20 +91,16 @@ impl GraphemeSet {
+ }
+ 
+ fn grapheme_set_from(ranges: &[RangeInclusive<char>], chars: &str) -> GraphemeSet {
+-    // Range characters use strict is_emoji() — text-presentation-by-default
+-    // characters from Unicode ranges should be treated as text glyphs.
+     let (emoji_ranged, unicode_ranged) = flatten_ranges_no_ascii(ranges);
+     let emoji_ranged = emoji_ranged
+         .into_iter()
+         .map(|c| c.to_compact_string());
+ 
+-    // Symbols file characters use emojis::get() directly — these are
+-    // explicitly curated and should be treated as emoji when recognized.
+     let (emoji, other_symbols): (Vec<&str>, Vec<&str>) = chars
+         .graphemes(true)
+         .filter(|s| !is_ascii_control(s))
+         .filter(|s| !s.is_ascii()) // always inserted
+-        .partition(|s| emojis::get(s).is_some());
++        .partition(|s| is_emoji(s));
+ 
+     let mut emoji: Vec<_> = emoji
+         .into_iter()
+@@ -114,18 +110,6 @@ fn grapheme_set_from(ranges: &[RangeInclusive<char>], chars: &str) -> GraphemeSe
+     emoji.sort();
+     emoji.dedup();
+ 
+-    // Build set of emoji first-chars so we can exclude range characters
+-    // that are already classified as emoji from the symbols file.
+-    let emoji_chars: HashSet<char> = emoji
+-        .iter()
+-        .filter_map(|s| {
+-            let mut chars = s.chars();
+-            let first = chars.next()?;
+-            // only single-char emoji (not multi-codepoint sequences)
+-            if chars.next().is_none() { Some(first) } else { None }
+-        })
+-        .collect();
+-
+     let mut other_symbols: Vec<char> = other_symbols
+         .into_iter()
+         .map(|s: &str| s.chars().next().unwrap())
+@@ -133,8 +117,6 @@ fn grapheme_set_from(ranges: &[RangeInclusive<char>], chars: &str) -> GraphemeSe
+     other_symbols.extend(unicode_ranged);
+     other_symbols.sort();
+     other_symbols.dedup();
+-    // Remove characters already classified as emoji (from the symbols file)
+-    other_symbols.retain(|c| !emoji_chars.contains(c));
+ 
+     let (halfwidth, fullwidth): (Vec<char>, Vec<char>) = other_symbols
+         .into_iter()
+@@ -231,20 +213,7 @@ fn assign_fullwidth_glyph_ids(last_id: u16, symbols: &[char]) -> Vec<Glyph> {
+ }
+ 
+ pub(super) fn is_emoji(s: &str) -> bool {
+-    match emojis::get(s) {
+-        Some(emoji) => {
+-            // If the canonical form contains FE0F, the base character is
+-            // text-presentation-by-default and should only be emoji when
+-            // the caller explicitly includes the variant selector.
+-            if emoji.as_str().contains('\u{FE0F}') {
+-                s.contains('\u{FE0F}')
+-            } else {
+-                // Emoji-presentation-by-default (e.g., 🚀, ⏩)
+-                true
+-            }
+-        },
+-        None => false,
+-    }
++    emojis::get(s).is_some()
+ }
+ 
+ #[cfg(test)]
+@@ -253,30 +222,11 @@ mod tests {
+ 
+     #[test]
+     fn test_is_emoji() {
+-        // Emoji-presentation-by-default: always emoji
+-        assert!(is_emoji("🚀"));
+-        assert!(is_emoji("😀"));
+-        assert!(is_emoji("⏩"));
+-        assert!(is_emoji("⏪"));
+-        assert!(is_emoji("⏫"));
+-        assert!(is_emoji("⏬"));
+-
+-        // Text-presentation-by-default with FE0F: emoji
+-        assert!(is_emoji("▶\u{FE0F}"));
+-
+-        // Text-presentation-by-default without FE0F: NOT emoji
+-        assert!(!is_emoji("▶"));
+-        assert!(!is_emoji("◀"));
+-        assert!(!is_emoji("⏭"));
+-        assert!(!is_emoji("⏹"));
+-        assert!(!is_emoji("⏮"));
+-        assert!(!is_emoji("▪"));
+-        assert!(!is_emoji("▫"));
+-        assert!(!is_emoji("◼"));
+-
+-        // Not recognized by emojis crate at all
+-        assert!(!is_emoji("A"));
+-        assert!(!is_emoji("█"));
++        assert!(super::is_emoji("⏭"));
++        assert!(super::is_emoji("⏹"));
++        assert!(super::is_emoji("▶️"));
++        assert!(super::is_emoji("⏹"));
++        assert!(super::is_emoji("⏮"));
+     }
+ 
+     #[test]
+@@ -312,40 +262,4 @@ mod tests {
+         // Should not panic or misclassify
+         assert!(gs.unicode.len() + gs.fullwidth_unicode.len() <= 1);
+     }
+-
+-    #[test]
+-    fn test_text_presentation_defaults_respected() {
+-        // Text-presentation-by-default glyphs: recognized by emojis crate
+-        // but their canonical forms contain FE0F, so they should be treated
+-        // as regular text glyphs unless explicitly followed by FE0F.
+-        let text_default = [
+-            ("▪", "BLACK SMALL SQUARE"),
+-            ("▫", "WHITE SMALL SQUARE"),
+-            ("◼", "BLACK MEDIUM SQUARE"),
+-            ("▶", "BLACK RIGHT-POINTING TRIANGLE"),
+-            ("◀", "BLACK LEFT-POINTING TRIANGLE"),
+-            ("⏭", "NEXT TRACK"),
+-            ("⏹", "STOP"),
+-            ("⏮", "PREVIOUS TRACK"),
+-        ];
+-
+-        for (s, name) in &text_default {
+-            assert!(
+-                emojis::get(s).is_some(),
+-                "{name} should be recognized by emojis crate",
+-            );
+-            assert!(
+-                !is_emoji(s),
+-                "{name} ({s}) should NOT be classified as emoji without FE0F",
+-            );
+-        }
+-
+-        // Emoji-presentation-by-default: always emoji regardless of FE0F
+-        let emoji_default =
+-            [("🚀", "ROCKET"), ("😀", "GRINNING FACE"), ("⏩", "FAST-FORWARD"), ("⏪", "REWIND")];
+-
+-        for (s, name) in &emoji_default {
+-            assert!(is_emoji(s), "{name} ({s}) should be classified as emoji",);
+-        }
+-    }
+ }
+diff --git a/beamterm-atlas/src/main.rs b/beamterm-atlas/src/main.rs
+index 7ff6133..73a3fec 100644
+--- a/beamterm-atlas/src/main.rs
++++ b/beamterm-atlas/src/main.rs
+@@ -428,7 +428,7 @@ fn default_unicode_ranges() -> Vec<std::ops::RangeInclusive<char>> {
+         '\u{00A0}'..='\u{00FF}', // Latin-1 Supplement
+         '\u{0100}'..='\u{017F}', // Latin Extended-A
+         '\u{2300}'..='\u{232F}', // Miscellaneous Technical
+-        '\u{2358}'..='\u{23FF}', // Miscellaneous Technical (skip APL functional symbols)
++        '\u{2350}'..='\u{23FF}', // Miscellaneous Technical
+         '\u{2500}'..='\u{257F}', // Box Drawing
+         '\u{2580}'..='\u{259F}', // Block Elements
+         '\u{25A0}'..='\u{25CF}', // Geometric Shapes (excerpt)
+diff --git a/beamterm-data/atlas/additional-symbols.txt b/beamterm-data/atlas/additional-symbols.txt
+index 80eaafb..c5683d8 100644
+--- a/beamterm-data/atlas/additional-symbols.txt
++++ b/beamterm-data/atlas/additional-symbols.txt
+@@ -1,4 +1,4 @@
+-⌚⌛⌨⏏⏩⏪⏫⏬⏭⏮⏯⏰⏱⏲⏳⏸⏹⏺▶️◀️◼️☀☁☂☃☎☑☔☝☠☢☣☹☹️☺☺️⚒⚔
++⌚⌛⌨⏏⏩⏪⏫⏬⏭⏮⏯⏰⏱⏲⏳⏸⏹⏺▶️☀☁☂☃☎☑☔☝☠☢☣☹☹️☺☺️⚒⚔
+ ⚖⚙⚠⚡⚪⚫⛄⛅⛈⛏⛓✅✊✋✌✍✔✨❄❇❌❎❓❔❕❗❣❤❤‍🔥❤‍🩹⤴⤵⬛⬜⭐⭕
+ 🌀🌂🌈🌊🌑🌒🌓🌔🌕🌖🌗🌘🌙🌚🌛🌜🌝🌞🌟🌤🌥🌦🌧🌨🌩🌬🎉🎊🎙🎚🎛🎤🎧🎬🎯🎵
+ 🎶🎼🏆🏹🐅🐆🐊🐋🐌🐍🐒🐔🐗🐘🐙🐛🐜🐝🐞🐟🐠🐡🐢🐣🐤🐥🐦🐧🐨🐪🐫🐬🐭🐮🐯🐰
+@@ -14,22 +14,8 @@
+ 🦯🦵🦶🦻🦾🦿🧐🧠🧭🧮🧰🧲🧿🪃🪓🪝🪤🪬🫠🫡🫢🫣🫤🫥🫨🫩🫰🫱🫲🫳🫴🫵🫶🫷🫸
+ 🔍🔎ℹ️💡🔔🔕📌📍🔘🏷️🌐📡🔌🔋🚫📦🗃️📅📆🗑️📤📥🔖↩️↪️🔀🔁🔂🏁🚩
+ 🐛🧪🚧🏗️🏠📝🧩🛑🌡️🎨✏️🎓🏃🆕
+-☕🍵🍺🍻🥂🍷🥃🍸🍹🍶🧉🧃🥤🧊🥛🍼🧋🍇🍈🍉🍊🍋🍌🍍🥭🍎🍏🍐🍑🍒🍓🫐🥝🥥
+-🥑🍆🥦🥬🥒🌽🥕🧄🧅🥔🍠🥜🌰🫒🧀🥚🥐🥖🥨🥯🧇🥞🥓🥩🍗🍖🍳🥪🥙🧆🥫🥗
+-🍕🍔🍟🌭🍿🌮🌯🍣🍱🍝🍜🍛🍲🥘🍙🍘🥟🍤🍥🥠🍡🍰🎂🍩🍪🧁🍫🍬🍭🍦🍧🍨🍮🍯🥧
+-👤👥🧑👨👩👶🧒🧓👴👵🧔👱👸🤴🦸🦹🧙🧚🧛🧜🧝🧞🧟💂👼🤰🤱🫅🧑‍💻👨‍💻👩‍💻🧑‍🔬🧑‍🎨🧑‍🚀
+-🧑‍🔧🧑‍🏭🧑‍💼🧑‍🎓🧑‍⚕️🧑‍🍳🧑‍🌾🧑‍🚒🧑‍✈️🧑‍⚖️👒🎩🧢👓🕶️👔👕👖👗👘👙🎒👞👟🥾👠👢👑💍💄🧣🧤🧥🧦
+-🎁🎈🎀🎗🎃🎄🎅🤶🎆🎇🧨🎋🎍🎎🎏🎐🎑🧧🎟🎫🎖🏅🥇🥈🥉🎪🎭🪅
+-✈️🚗🚕🚙🚌🚑🚒🚓🏎️🚲🛴🛵🏍️⛵🚤🛳️🚂🚄🚅🚇🚈🚉🛫🛬🛩🚁🛶🛸🚢🚡🚠🛥️⛴️🚐🚎
+-🌲🌳🌴🌵🌷🌸🌹🌺🌻🌼🌿🍀🍁🍂🍃🪴🌱🪨🪵🌾🪻🪷
+-🐀🐁🐂🐃🐄🐈🐉🐎🐏🐐🐑🐓🐕🐖🐩🐲🦊🦌🦍🦝🦫🦭🦤🦩🦚🦜🦢🦨🦦🦡🪱🪰🪲🪳🦠🐿️
+-⚽⚾🏀🏈🏉🎾🏐🏑🏒🏓🏸🥊🥋🎿⛷🏂🏊🚴🏄🛹🤸🤼🤽🤾🏇🤿🧗🎮🕹️🎰🎳🎷🎸🎹🎺🎻
+-🪕🥁🪘🪗📎✂️🔬🔭📸📷🎥📹🎞💊💉💎🔮🪄🧸🖼️🗜️🪣🧯🧴🧷🧹🧻🧼📐📏🛒🕯️🏮
+-💰💵💶💷💸💳🧾🪙♻️♾️⚜️🔱⚛️☮️☯️⚕️♿🚻🚼🚾🚮🚰🚿🛁🪠🧬🧫🛰️🔦📲🗺️🔆🔅
+-🏢🏣🏤🏥🏦🏨🏩🏪🏫🏬🏭🏯🏰🗽🗻🗼⛪⛩⛲🌃🌄🌅🌆🌇🌉🏖️🏝️🏜️🏔️🎠🎡🎢⛺🏕️🗾🌁
+-🆗🆘🆙🆒🆓🆔🆖🆚🅰️🅱️🅾️🅿️🔠🔡🔢🔣🔤🪞🪟🛋️🪑🏺🪶🫧🪩
+ 
+ ←↑→↓⇧
+ ⌫⇥⏎⇤⌘␣
+ ⏻⏼
+-•€
++•€
+\ No newline at end of file
+diff --git a/beamterm-data/atlas/bitmap_font.atlas b/beamterm-data/atlas/bitmap_font.atlas
+index d4d5a39..1d4547a 100644
+Binary files a/beamterm-data/atlas/bitmap_font.atlas and b/beamterm-data/atlas/bitmap_font.atlas differ
+diff --git a/beamterm-renderer/Cargo.toml b/beamterm-renderer/Cargo.toml
+index b37725f..51c01b4 100644
+--- a/beamterm-renderer/Cargo.toml
++++ b/beamterm-renderer/Cargo.toml
+@@ -22,7 +22,7 @@ crate-type = ["cdylib", "rlib"]
+ 
+ [dependencies]
+ bitflags.workspace = true
+-beamterm-data = { path = "../beamterm-data", version = "0.15.0" }
++beamterm-data = { path = "../beamterm-data", version = "0.14.0" }
+ compact_str = { workspace = true }
+ console_error_panic_hook = { workspace = true }
+ thiserror = { workspace = true }
+diff --git a/beamterm-renderer/src/gl/atlas.rs b/beamterm-renderer/src/gl/atlas.rs
+index c342849..455e0fa 100644
+--- a/beamterm-renderer/src/gl/atlas.rs
++++ b/beamterm-renderer/src/gl/atlas.rs
+@@ -31,11 +31,6 @@ pub(crate) trait Atlas {
+     /// Returns the symbol for the given glyph ID, if it exists
+     fn get_symbol(&self, glyph_id: u16) -> Option<CompactString>;
+ 
+-    /// Returns the ASCII character for the given glyph ID, if it represents an ASCII char.
+-    ///
+-    /// This is an optimized path for URL detection that avoids string allocation.
+-    fn get_ascii_char(&self, glyph_id: u16) -> Option<char>;
+-
+     /// Returns a reference to the glyph tracker for accessing missing glyphs.
+     fn glyph_tracker(&self) -> &GlyphTracker;
+ 
+@@ -191,10 +186,6 @@ impl FontAtlas {
+         self.inner.get_symbol(glyph_id)
+     }
+ 
+-    pub(crate) fn get_ascii_char(&self, glyph_id: u16) -> Option<char> {
+-        self.inner.get_ascii_char(glyph_id)
+-    }
+-
+     pub(crate) fn glyph_tracker(&self) -> &GlyphTracker {
+         self.inner.glyph_tracker()
+     }
+diff --git a/beamterm-renderer/src/gl/canvas_rasterizer.rs b/beamterm-renderer/src/gl/canvas_rasterizer.rs
+index 797ae87..f25c5f3 100644
+--- a/beamterm-renderer/src/gl/canvas_rasterizer.rs
++++ b/beamterm-renderer/src/gl/canvas_rasterizer.rs
+@@ -190,7 +190,7 @@ impl CanvasRasterizer {
+         for (i, &(grapheme, style)) in symbols.iter().enumerate() {
+             // emoji always uses normal style (no bold/italic variants)
+             let effective_style =
+-                if crate::terminal::is_emoji(grapheme) { FontStyle::Normal } else { style };
++                if emojis::get(grapheme).is_some() { FontStyle::Normal } else { style };
+ 
+             // update font if style changed
+             if current_style != Some(effective_style) {
+diff --git a/beamterm-renderer/src/gl/dynamic_atlas.rs b/beamterm-renderer/src/gl/dynamic_atlas.rs
+index c44628a..6fdd401 100644
+--- a/beamterm-renderer/src/gl/dynamic_atlas.rs
++++ b/beamterm-renderer/src/gl/dynamic_atlas.rs
+@@ -12,7 +12,7 @@ use super::{
+     GL, atlas,
+     atlas::{Atlas, GlyphSlot, GlyphTracker, SlotId},
+     canvas_rasterizer::{CanvasRasterizer, RasterizedGlyph},
+-    glyph_cache::{ASCII_SLOTS, GlyphCache},
++    glyph_cache::GlyphCache,
+     texture::Texture,
+ };
+ use crate::error::Error;
+@@ -264,9 +264,9 @@ impl Atlas for DynamicFontAtlas {
+     }
+ 
+     fn get_symbol(&self, glyph_id: u16) -> Option<CompactString> {
+-        // ASCII characters (slots 0..ASCII_SLOTS) are directly mapped: slot_id = codepoint - 0x20
+-        // This matches upload_ascii_glyphs() which assigns slots for 0x20..=0x7E
+-        if glyph_id < ASCII_SLOTS {
++        // ASCII characters (slots 0-94) are directly mapped: slot_id = codepoint - 0x20
++        // This matches upload_ascii_glyphs() which assigns slots 0-94 for 0x20-0x7E
++        if glyph_id < 95 {
+             let ch = (glyph_id + 0x20) as u8 as char;
+             Some(ch.to_compact_string())
+         } else {
+@@ -277,18 +277,6 @@ impl Atlas for DynamicFontAtlas {
+         }
+     }
+ 
+-    fn get_ascii_char(&self, glyph_id: u16) -> Option<char> {
+-        if glyph_id < ASCII_SLOTS {
+-            Some((glyph_id + 0x20) as u8 as char)
+-        } else {
+-            // this atlas only encodes Normal-styled ascii glyphs
+-            // per default, so we have to do a lookup for all other slots
+-            self.get_symbol(glyph_id)
+-                .map(|s| s.chars().next().unwrap())
+-                .filter(|&ch| ch.is_ascii())
+-        }
+-    }
+-
+     fn glyph_tracker(&self) -> &GlyphTracker {
+         &self.glyph_tracker
+     }
+diff --git a/beamterm-renderer/src/gl/glyph_cache.rs b/beamterm-renderer/src/gl/glyph_cache.rs
+index 733791e..d43aa93 100644
+--- a/beamterm-renderer/src/gl/glyph_cache.rs
++++ b/beamterm-renderer/src/gl/glyph_cache.rs
+@@ -9,13 +9,10 @@ use compact_str::CompactString;
+ use lru::LruCache;
+ use unicode_width::UnicodeWidthStr;
+ 
+-use crate::{
+-    gl::atlas::{GlyphSlot, SlotId},
+-    terminal::is_emoji,
+-};
++use crate::gl::atlas::{GlyphSlot, SlotId};
+ 
+ /// Pre-allocated slots for normal-styled ASCII glyphs (0x20..0x7E)
+-pub(super) const ASCII_SLOTS: u16 = 0x7E - 0x20 + 1; // 95 slots for ASCII (0x20..0x7E)
++const ASCII_SLOTS: u16 = 0x7E - 0x20 + 1; // 95 slots for ASCII (0x20..0x7E)
+ 
+ /// Normal glyphs: slots 0..2048
+ const NORMAL_CAPACITY: usize = 2048;
+@@ -64,7 +61,7 @@ impl GlyphCache {
+             _ if key.len() == 1 => self.normal.get(&cache_key).copied(),
+ 
+             // emoji glyphs disregard style
+-            _ if is_emoji(key) => self
++            _ if emojis::get(key).is_some() => self
+                 .wide
+                 .get(&(CompactString::new(key), FontStyle::Normal))
+                 .copied(),
+@@ -87,7 +84,7 @@ impl GlyphCache {
+         }
+ 
+         let cache_key = (CompactString::new(key), style);
+-        let is_emoji = is_emoji(key);
++        let is_emoji = emojis::get(key).is_some();
+ 
+         if is_emoji || key.width() == 2 {
+             // Check if already present
+diff --git a/beamterm-renderer/src/gl/renderer.rs b/beamterm-renderer/src/gl/renderer.rs
+index e3e302d..87dc715 100644
+--- a/beamterm-renderer/src/gl/renderer.rs
++++ b/beamterm-renderer/src/gl/renderer.rs
+@@ -128,6 +128,47 @@ impl Renderer {
+         self.state.viewport(&self.gl, 0, 0, w, h);
+     }
+ 
++    /// Resizes the canvas using exact physical pixel dimensions.
++    ///
++    /// Unlike [`resize`], this method accepts physical pixels directly, avoiding
++    /// CSS-to-physical conversion rounding errors. Use this for precise control
++    /// over canvas dimensions on HiDPI displays to prevent padding/gaps.
++    ///
++    /// # Parameters
++    /// * `physical_width` - Canvas width in physical (device) pixels
++    /// * `physical_height` - Canvas height in physical (device) pixels
++    /// * `css_width` - CSS width for layout (what the user sees)
++    /// * `css_height` - CSS height for layout
++    pub fn resize_physical(
++        &mut self,
++        physical_width: i32,
++        physical_height: i32,
++        css_width: f64,
++        css_height: f64,
++    ) {
++        // Store logical size based on physical / dpr for consistency
++        self.logical_size_px = (
++            (physical_width as f32 / self.pixel_ratio) as i32,
++            (physical_height as f32 / self.pixel_ratio) as i32,
++        );
++
++        // Set canvas buffer size (physical pixels)
++        self.canvas.set_width(physical_width as u32);
++        self.canvas.set_height(physical_height as u32);
++
++        // Set CSS size (for layout and mouse coordinates)
++        let _ = self
++            .canvas
++            .style()
++            .set_property("width", &format!("{css_width}px"));
++        let _ = self
++            .canvas
++            .style()
++            .set_property("height", &format!("{css_height}px"));
++
++        self.state.viewport(&self.gl, 0, 0, physical_width, physical_height);
++    }
++
+     /// Clears the framebuffer with the specified color.
+     ///
+     /// Sets the clear color and clears both the color and depth buffers.
+@@ -246,6 +287,14 @@ impl Renderer {
+     pub(crate) fn set_pixel_ratio(&mut self, pixel_ratio: f32) {
+         self.pixel_ratio = pixel_ratio;
+     }
++
++    /// Sets the canvas padding color.
++    ///
++    /// When the canvas dimensions don't align perfectly with the terminal cell grid,
++    /// there may be unused pixels around the edges. This color fills those padding areas.
++    pub fn set_canvas_padding_color(&mut self, r: f32, g: f32, b: f32) {
++        self.canvas_padding_color = (r, g, b);
++    }
+ }
+ 
+ /// Trait for objects that can be rendered by the renderer.
+diff --git a/beamterm-renderer/src/gl/static_atlas.rs b/beamterm-renderer/src/gl/static_atlas.rs
+index 08902a8..fea16f4 100644
+--- a/beamterm-renderer/src/gl/static_atlas.rs
++++ b/beamterm-renderer/src/gl/static_atlas.rs
+@@ -166,15 +166,6 @@ impl Atlas for StaticFontAtlas {
+         }
+     }
+ 
+-    fn get_ascii_char(&self, glyph_id: u16) -> Option<char> {
+-        // Static atlas: ASCII chars 0x20-0x7F have glyph_id == char code
+-        if (0x20..0x80).contains(&glyph_id) {
+-            Some(glyph_id as u8 as char)
+-        } else {
+-            None
+-        }
+-    }
+-
+     fn glyph_tracker(&self) -> &GlyphTracker {
+         &self.glyph_tracker
+     }
+diff --git a/beamterm-renderer/src/gl/terminal_grid.rs b/beamterm-renderer/src/gl/terminal_grid.rs
+index de65d22..bb1cddd 100644
+--- a/beamterm-renderer/src/gl/terminal_grid.rs
++++ b/beamterm-renderer/src/gl/terminal_grid.rs
+@@ -5,7 +5,6 @@ use compact_str::{CompactString, CompactStringExt};
+ use web_sys::{WebGl2RenderingContext, console};
+ 
+ use crate::{
+-    CursorPosition,
+     error::Error,
+     gl::{
+         CellIterator, CellQuery, Drawable, GL, RenderContext, ShaderProgram, StaticFontAtlas,
+@@ -347,20 +346,6 @@ impl TerminalGrid {
+         text
+     }
+ 
+-    /// Returns the ASCII character at the given position, if it's an ASCII char.
+-    ///
+-    /// Returns `None` for non-ASCII characters or out-of-bounds positions.
+-    /// This is an optimized path for URL detection that avoids string allocation.
+-    pub(crate) fn get_ascii_char_at(&self, cursor: CursorPosition) -> Option<char> {
+-        let idx = cursor.row as usize * self.terminal_size.0 as usize + cursor.col as usize;
+-        if idx < self.cells.len() {
+-            let glyph_id = self.cells[idx].glyph_id();
+-            self.atlas.get_ascii_char(glyph_id)
+-        } else {
+-            None
+-        }
+-    }
+-
+     pub(crate) fn hash_cells(&self, selection: CellQuery) -> u64 {
+         use std::hash::{Hash, Hasher};
+ 
+diff --git a/beamterm-renderer/src/lib.rs b/beamterm-renderer/src/lib.rs
+index 6a35e53..a91f957 100644
+--- a/beamterm-renderer/src/lib.rs
++++ b/beamterm-renderer/src/lib.rs
+@@ -1,7 +1,6 @@
+ mod error;
+ mod gl;
+ mod mat4;
+-mod position;
+ mod terminal;
+ 
+ pub(crate) mod js;
+@@ -10,13 +9,10 @@ pub(crate) mod js;
+ pub mod wasm;
+ 
+ pub mod mouse;
+-mod url;
+ 
+ pub use ::beamterm_data::{DebugSpacePattern, FontAtlasData, GlyphEffect};
+ pub use beamterm_data::FontStyle;
+-pub use position::CursorPosition;
+ pub use terminal::*;
+-pub use url::UrlMatch;
+ 
+ pub use crate::{error::Error, gl::*};
+ 
+diff --git a/beamterm-renderer/src/mouse.rs b/beamterm-renderer/src/mouse.rs
+index 1559261..8db2f5f 100644
+--- a/beamterm-renderer/src/mouse.rs
++++ b/beamterm-renderer/src/mouse.rs
+@@ -63,20 +63,21 @@ pub type MouseEventCallback = Box<dyn FnMut(TerminalMouseEvent, &TerminalGrid) +
+ /// Internal type for shared event handler wrapped in Rc<RefCell>.
+ type EventHandler = Rc<RefCell<dyn FnMut(TerminalMouseEvent, &TerminalGrid) + 'static>>;
+ 
+-/// All mouse event types this handler listens to.
+-const MOUSE_EVENTS: &[&str] =
+-    &["mousedown", "mouseup", "mousemove", "click", "mouseenter", "mouseleave"];
+-
+ /// Handles mouse input events for a terminal grid.
+ ///
+ /// Converts browser mouse events into terminal grid coordinates and manages
+ /// event handlers for mouse interactions. Maintains terminal dimensions for
+ /// accurate coordinate mapping.
++///
+ pub struct TerminalMouseHandler {
+     /// The canvas element this handler is attached to.
+     canvas: web_sys::HtmlCanvasElement,
+-    /// Unified closure for all mouse events.
+-    on_mouse_event: Closure<dyn FnMut(web_sys::MouseEvent)>,
++    /// Closure for mousedown events.
++    on_mouse_down: Closure<dyn FnMut(web_sys::MouseEvent)>,
++    /// Closure for mouseup events.
++    on_mouse_up: Closure<dyn FnMut(web_sys::MouseEvent)>,
++    /// Closure for mousemove events.
++    on_mouse_move: Closure<dyn FnMut(web_sys::MouseEvent)>,
+     /// Cached terminal metrics (dimensions + cell size) for coordinate conversion.
+     metrics: TerminalMetrics,
+     /// Optional default selection handler.
+@@ -149,27 +150,6 @@ pub enum MouseEventType {
+     MouseUp = 1,
+     /// Mouse moved while over the terminal.
+     MouseMove = 2,
+-    /// Mouse button was clicked (pressed and released).
+-    Click = 3,
+-    /// Mouse cursor entered the terminal area.
+-    MouseEnter = 4,
+-    /// Mouse cursor left the terminal area.
+-    MouseLeave = 5,
+-}
+-
+-impl MouseEventType {
+-    /// Converts a browser event type string to a MouseEventType.
+-    fn from_event_type(event_type: &str) -> Option<Self> {
+-        match event_type {
+-            "mousedown" => Some(Self::MouseDown),
+-            "mouseup" => Some(Self::MouseUp),
+-            "mousemove" => Some(Self::MouseMove),
+-            "click" => Some(Self::Click),
+-            "mouseenter" => Some(Self::MouseEnter),
+-            "mouseleave" => Some(Self::MouseLeave),
+-            _ => None,
+-        }
+-    }
+ }
+ 
+ /// Configuration options for mouse-based text selection.
+@@ -311,8 +291,10 @@ impl TerminalMouseHandler {
+         // Create pixel-to-cell coordinate converter
+         let metrics_ref = metrics.clone_ref();
+         let pixel_to_cell = move |event: &web_sys::MouseEvent| -> Option<(u16, u16)> {
+-            let x = event.offset_x() as f32;
+-            let y = event.offset_y() as f32;
++            // Convert CSS pixels to physical pixels for HiDPI displays
++            let dpr = web_sys::window().map(|w| w.device_pixel_ratio()).unwrap_or(1.0) as f32;
++            let x = event.offset_x() as f32 * dpr;
++            let y = event.offset_y() as f32 * dpr;
+ 
+             let m = metrics_ref.borrow();
+             let col = (x / m.cell_width).floor() as u16;
+@@ -321,23 +303,39 @@ impl TerminalMouseHandler {
+             if col < m.cols && row < m.rows { Some((col, row)) } else { None }
+         };
+ 
+-        // Create unified event handler
+-        let on_mouse_event =
+-            create_mouse_event_closure(grid.clone(), shared_handler, pixel_to_cell);
+-
+-        // Attach event listeners for all mouse event types
+-        for event_type in MOUSE_EVENTS {
+-            canvas
+-                .add_event_listener_with_callback(
+-                    event_type,
+-                    on_mouse_event.as_ref().unchecked_ref(),
+-                )
+-                .map_err(|_| Error::Callback(format!("Failed to add {event_type} listener")))?;
+-        }
++        // Create event handlers
++        use MouseEventType::*;
++        let on_mouse_down = create_mouse_event_closure(
++            MouseDown,
++            grid.clone(),
++            shared_handler.clone(),
++            pixel_to_cell.clone(),
++        );
++        let on_mouse_up = create_mouse_event_closure(
++            MouseUp,
++            grid.clone(),
++            shared_handler.clone(),
++            pixel_to_cell.clone(),
++        );
++        let on_mouse_move =
++            create_mouse_event_closure(MouseMove, grid.clone(), shared_handler, pixel_to_cell);
++
++        // Attach event listeners
++        canvas
++            .add_event_listener_with_callback("mousedown", on_mouse_down.as_ref().unchecked_ref())
++            .map_err(|_| Error::Callback("Failed to add mousedown listener".into()))?;
++        canvas
++            .add_event_listener_with_callback("mouseup", on_mouse_up.as_ref().unchecked_ref())
++            .map_err(|_| Error::Callback("Failed to add mouseup listener".into()))?;
++        canvas
++            .add_event_listener_with_callback("mousemove", on_mouse_move.as_ref().unchecked_ref())
++            .map_err(|_| Error::Callback("Failed to add mousemove listener".into()))?;
+ 
+         Ok(Self {
+             canvas: canvas.clone(),
+-            on_mouse_event,
++            on_mouse_down,
++            on_mouse_up,
++            on_mouse_move,
+             metrics,
+             default_input_handler: None,
+         })
+@@ -347,12 +345,18 @@ impl TerminalMouseHandler {
+     ///
+     /// Called automatically on drop. Safe to call multiple times.
+     pub fn cleanup(&self) {
+-        for event_type in MOUSE_EVENTS {
+-            let _ = self.canvas.remove_event_listener_with_callback(
+-                event_type,
+-                self.on_mouse_event.as_ref().unchecked_ref(),
+-            );
+-        }
++        let _ = self.canvas.remove_event_listener_with_callback(
++            "mousedown",
++            self.on_mouse_down.as_ref().unchecked_ref(),
++        );
++        let _ = self.canvas.remove_event_listener_with_callback(
++            "mouseup",
++            self.on_mouse_up.as_ref().unchecked_ref(),
++        );
++        let _ = self.canvas.remove_event_listener_with_callback(
++            "mousemove",
++            self.on_mouse_move.as_ref().unchecked_ref(),
++        );
+     }
+ 
+     /// Updates the cached terminal metrics.
+@@ -608,59 +612,41 @@ impl SelectionState {
+ /// Creates a closure that handles browser mouse events and converts them to terminal events.
+ ///
+ /// Wraps the event handler with coordinate conversion and terminal event creation logic.
+-/// Handles all mouse event types (mousedown, mouseup, mousemove, click, mouseenter, mouseleave).
+ fn create_mouse_event_closure(
++    event_type: MouseEventType,
+     grid: Rc<RefCell<TerminalGrid>>,
+     event_handler: EventHandler,
+     pixel_to_cell: impl Fn(&web_sys::MouseEvent) -> Option<(u16, u16)> + 'static,
+ ) -> Closure<dyn FnMut(web_sys::MouseEvent)> {
+     Closure::wrap(Box::new(move |event: web_sys::MouseEvent| {
+-        // Determine event type from browser event
+-        let Some(event_type) = MouseEventType::from_event_type(&event.type_()) else {
+-            return;
+-        };
+-
+-        // For enter/exit events, we don't need valid cell coordinates
+-        let (col, row) = match event_type {
+-            MouseEventType::MouseEnter | MouseEventType::MouseLeave => {
+-                // Use (0, 0) for enter/leave events as they may occur outside the grid
+-                (0, 0)
+-            },
+-            _ => {
+-                // For other events, require valid cell coordinates
+-                match pixel_to_cell(&event) {
+-                    Some(coords) => coords,
+-                    None => return,
++        if let Some((col, row)) = pixel_to_cell(&event) {
++            let modifiers = {
++                let mut mods = ModifierKeys::empty();
++                if event.ctrl_key() {
++                    mods |= ModifierKeys::CONTROL;
+                 }
+-            },
+-        };
+-
+-        let modifiers = {
+-            let mut mods = ModifierKeys::empty();
+-            if event.ctrl_key() {
+-                mods |= ModifierKeys::CONTROL;
+-            }
+-            if event.shift_key() {
+-                mods |= ModifierKeys::SHIFT;
+-            }
+-            if event.alt_key() {
+-                mods |= ModifierKeys::ALT;
+-            }
+-            if event.meta_key() {
+-                mods |= ModifierKeys::META;
+-            }
+-            mods
+-        };
++                if event.shift_key() {
++                    mods |= ModifierKeys::SHIFT;
++                }
++                if event.alt_key() {
++                    mods |= ModifierKeys::ALT;
++                }
++                if event.meta_key() {
++                    mods |= ModifierKeys::META;
++                }
++                mods
++            };
+ 
+-        let terminal_event = TerminalMouseEvent {
+-            event_type,
+-            col,
+-            row,
+-            button: event.button(),
+-            modifier_keys: modifiers,
+-        };
+-        let grid_ref = grid.borrow();
+-        event_handler.borrow_mut()(terminal_event, &grid_ref);
++            let terminal_event = TerminalMouseEvent {
++                event_type,
++                col,
++                row,
++                button: event.button(),
++                modifier_keys: modifiers,
++            };
++            let grid_ref = grid.borrow();
++            event_handler.borrow_mut()(terminal_event, &grid_ref);
++        }
+     }) as Box<dyn FnMut(_)>)
+ }
+ 
+diff --git a/beamterm-renderer/src/position.rs b/beamterm-renderer/src/position.rs
+deleted file mode 100644
+index b669495..0000000
+--- a/beamterm-renderer/src/position.rs
++++ /dev/null
+@@ -1,25 +0,0 @@
+-/// A position in the terminal grid, specified by column and row.
+-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+-pub struct CursorPosition {
+-    pub col: u16,
+-    pub row: u16,
+-}
+-
+-impl CursorPosition {
+-    pub fn new(col: u16, row: u16) -> Self {
+-        Self { col, row }
+-    }
+-
+-    pub(crate) fn move_left(self, distance: u16) -> Option<CursorPosition> {
+-        self.col
+-            .checked_sub(distance)
+-            .map(|col| CursorPosition::new(col, self.row))
+-    }
+-
+-    pub(crate) fn move_right(self, distance: u16, row_length: u16) -> Option<CursorPosition> {
+-        self.col
+-            .checked_add(distance)
+-            .map(|col| CursorPosition::new(col, self.row))
+-            .filter(|&pos| pos.col < row_length)
+-    }
+-}
+diff --git a/beamterm-renderer/src/terminal.rs b/beamterm-renderer/src/terminal.rs
+index d0bfe37..ffd34d5 100644
+--- a/beamterm-renderer/src/terminal.rs
++++ b/beamterm-renderer/src/terminal.rs
+@@ -6,15 +6,14 @@ use unicode_width::UnicodeWidthStr;
+ use wasm_bindgen::prelude::*;
+ 
+ use crate::{
+-    CellData, CursorPosition, DynamicFontAtlas, Error, FontAtlas, Renderer, SelectionMode,
+-    StaticFontAtlas, TerminalGrid, UrlMatch,
++    CellData, DynamicFontAtlas, Error, FontAtlas, Renderer, SelectionMode, StaticFontAtlas,
++    TerminalGrid,
+     gl::{CellQuery, ContextLossHandler},
+     js::device_pixel_ratio,
+     mouse::{
+         DefaultSelectionHandler, MouseEventCallback, MouseSelectOptions, TerminalMouseEvent,
+         TerminalMouseHandler,
+     },
+-    url::find_url_at_cursor,
+ };
+ 
+ /// High-performance WebGL2 terminal renderer.
+@@ -269,21 +268,6 @@ impl Terminal {
+         self.grid.borrow().get_text(selection)
+     }
+ 
+-    /// Detects an HTTP/HTTPS URL at or around the given cell position.
+-    ///
+-    /// Scans left from the cursor to find a URL scheme (`http://` or `https://`),
+-    /// then scans right to find the URL end. Handles trailing punctuation and
+-    /// unbalanced parentheses (e.g., Wikipedia URLs).
+-    ///
+-    /// Returns `None` if no URL is found at the cursor position.
+-    ///
+-    /// **Note:** Only detects URLs within a single row. URLs that wrap across
+-    /// multiple lines are not supported.
+-    pub fn find_url_at(&self, cursor: CursorPosition) -> Option<UrlMatch> {
+-        let grid = self.grid.borrow();
+-        find_url_at_cursor(cursor, &grid)
+-    }
+-
+     /// Renders the current terminal state to the canvas.
+     ///
+     /// This method performs the complete render pipeline: frame setup, grid rendering,
+@@ -797,27 +781,9 @@ enum InputHandler {
+     CopyOnSelect(MouseSelectOptions),
+ }
+ 
+-/// Checks if a grapheme is an emoji-presentation-by-default character.
+-///
+-/// Text-presentation-by-default characters (e.g., `▶`, `⏭`, `⏹`, `▪`) are
+-/// recognized by the `emojis` crate but should only be treated as emoji when
+-/// explicitly followed by the variation selector `\u{FE0F}`. Without it, they
+-/// are regular text glyphs.
+-pub(crate) fn is_emoji(s: &str) -> bool {
+-    match emojis::get(s) {
+-        Some(emoji) => {
+-            // If the canonical form contains FE0F, the base character is
+-            // text-presentation-by-default and should only be emoji when
+-            // the caller explicitly includes the variant selector.
+-            if emoji.as_str().contains('\u{FE0F}') { s.contains('\u{FE0F}') } else { true }
+-        },
+-        None => false,
+-    }
+-}
+-
+ /// Checks if a grapheme is double-width (emoji or fullwidth character).
+ pub(crate) fn is_double_width(grapheme: &str) -> bool {
+-    grapheme.len() > 1 && (is_emoji(grapheme) || grapheme.width() == 2)
++    grapheme.len() > 1 && (emojis::get(grapheme).is_some() || grapheme.width() == 2)
+ }
+ 
+ /// Debug API exposed to browser console for terminal inspection.
+@@ -954,66 +920,23 @@ impl<'a> From<&'a web_sys::HtmlCanvasElement> for CanvasSource {
+ mod tests {
+     use super::*;
+ 
+-    #[test]
+-    fn test_is_emoji() {
+-        // Emoji-presentation-by-default: always emoji
+-        assert!(is_emoji("🚀"));
+-        assert!(is_emoji("😀"));
+-        assert!(is_emoji("⏩"));
+-        assert!(is_emoji("⏪"));
+-
+-        // Text-presentation-by-default with FE0F: emoji
+-        assert!(is_emoji("▶\u{FE0F}"));
+-
+-        // Text-presentation-by-default without FE0F: NOT emoji
+-        assert!(!is_emoji("▶"));
+-        assert!(!is_emoji("◀"));
+-        assert!(!is_emoji("⏭"));
+-        assert!(!is_emoji("⏹"));
+-        assert!(!is_emoji("⏮"));
+-        assert!(!is_emoji("▪"));
+-        assert!(!is_emoji("▫"));
+-        assert!(!is_emoji("◼"));
+-
+-        // Not recognized by emojis crate at all
+-        assert!(!is_emoji("A"));
+-        assert!(!is_emoji("█"));
+-    }
+-
+     #[test]
+     fn test_is_double_width() {
+-        // emoji-presentation-by-default
++        // emoji
+         assert!(is_double_width("😀"));
+         assert!(is_double_width("👨‍👩‍👧")); // ZWJ sequence
+ 
+         [
+-            "⌚", "⌛", "⏩", "⏳", "☔", "☕", "♈", "♓", "♿", "⚓", "⚡", "⚪", "⚫", "⚽",
+-            "⚾", "⛄", "⛅", "⛎", "⛔", "⛪", "⛲", "⛳", "⛵", "⛺", "⛽", "◾", "⬛", "⬜",
+-            "⭐", "⭕", "〰", "〽", "㊗", "㊙",
++            "⌚", "⌛", "⏩", "⏳", "⏸", "⏺", "▪", "▫", "▶", "◀", "◻", "◾", "☔", "☕", "♈",
++            "♓", "♿", "⚓", "⚡", "⚪", "⚫", "⚽", "⚾", "⛄", "⛅", "⛎", "⛔", "⛪", "⛲",
++            "⛳", "⛵", "⛺", "⛽", "⤴", "⤵", "⬅", "⬇", "⬛", "⬜", "⭐", "⭕", "〰", "〽", "㊗",
++            "㊙", "⛈",
+         ]
+         .iter()
+         .for_each(|s| {
+             assert!(is_double_width(s), "Failed for emoji: {}", s);
+         });
+ 
+-        // text-presentation-by-default with FE0F: double-width
+-        assert!(is_double_width("▶\u{FE0F}"));
+-        assert!(is_double_width("◀\u{FE0F}"));
+-
+-        // text-presentation-by-default without FE0F: single-width
+-        assert!(!is_double_width("⏸"));
+-        assert!(!is_double_width("⏺"));
+-        assert!(!is_double_width("▪"));
+-        assert!(!is_double_width("▫"));
+-        assert!(!is_double_width("▶"));
+-        assert!(!is_double_width("◀"));
+-        assert!(!is_double_width("◻"));
+-        assert!(!is_double_width("⤴"));
+-        assert!(!is_double_width("⤵"));
+-        assert!(!is_double_width("⬅"));
+-        assert!(!is_double_width("⬇"));
+-        assert!(!is_double_width("⛈"));
+-
+         // CJK
+         assert!(is_double_width("中"));
+         assert!(is_double_width("日"));
+diff --git a/beamterm-renderer/src/url.rs b/beamterm-renderer/src/url.rs
+deleted file mode 100644
+index c4d1a1e..0000000
+--- a/beamterm-renderer/src/url.rs
++++ /dev/null
+@@ -1,232 +0,0 @@
+-use compact_str::CompactString;
+-
+-use crate::{SelectionMode, TerminalGrid, gl::CellQuery, position::CursorPosition, select};
+-
+-/// Result of URL detection containing the query and extracted URL text.
+-pub struct UrlMatch {
+-    /// A `CellQuery` configured with the URL's start and end positions.
+-    pub query: CellQuery,
+-    /// The extracted URL string.
+-    pub url: CompactString,
+-}
+-
+-/// Characters that are valid within a URL (RFC 3986 unreserved + reserved).
+-fn is_url_char(ch: char) -> bool {
+-    ch.is_ascii_alphanumeric()
+-        || matches!(
+-            ch,
+-            '-' | '.'
+-                | '_'
+-                | '~'
+-                | ':'
+-                | '/'
+-                | '?'
+-                | '#'
+-                | '['
+-                | ']'
+-                | '@'
+-                | '!'
+-                | '$'
+-                | '&'
+-                | '\''
+-                | '('
+-                | ')'
+-                | '*'
+-                | '+'
+-                | ','
+-                | ';'
+-                | '='
+-                | '%'
+-        )
+-}
+-
+-/// Characters that should be trimmed from the end of a URL.
+-fn is_trailing_punctuation(ch: char) -> bool {
+-    matches!(ch, '.' | ',' | ';' | ':' | '!' | '?')
+-}
+-
+-/// Detects an HTTP/HTTPS URL at or around the given cursor position.
+-///
+-/// Scans left to find a URL scheme (`http://` or `https://`), then scans right
+-/// to find the URL end. Handles trailing punctuation and unbalanced parentheses.
+-///
+-/// Returns `None` if no URL is found at the cursor position.
+-pub(super) fn find_url_at_cursor(cursor: CursorPosition, grid: &TerminalGrid) -> Option<UrlMatch> {
+-    let cols = grid.terminal_size().0;
+-
+-    // Find scheme start by scanning left
+-    let scheme_start = find_scheme_start(cursor, grid, cols)?;
+-
+-    // Verify and get scheme length
+-    let scheme_len = if matches_sequence(grid, scheme_start, "https://", cols) {
+-        8
+-    } else if matches_sequence(grid, scheme_start, "http://", cols) {
+-        7
+-    } else {
+-        return None;
+-    };
+-
+-    // Scan right from after scheme, tracking paren balance
+-    let after_scheme = scheme_start.move_right(scheme_len, cols)?;
+-    let (raw_end, paren_balance) = scan_url_extent(after_scheme, grid, cols);
+-
+-    // Trim trailing punctuation and unbalanced close parens
+-    let url_end = trim_url_end(scheme_start, raw_end, paren_balance, grid);
+-
+-    // Verify cursor is within the URL bounds
+-    if cursor.col < scheme_start.col || cursor.col > url_end.col {
+-        return None;
+-    }
+-
+-    // Now extract the text
+-    let query = select(SelectionMode::Linear)
+-        .start((scheme_start.col, scheme_start.row))
+-        .end((url_end.col, url_end.row));
+-
+-    let url = grid.get_text(query);
+-
+-    Some(UrlMatch { query, url })
+-}
+-
+-/// Scans left from the cursor to find the start of a URL scheme.
+-fn find_scheme_start(
+-    cursor: CursorPosition,
+-    grid: &TerminalGrid,
+-    cols: u16,
+-) -> Option<CursorPosition> {
+-    let mut pos = cursor;
+-
+-    loop {
+-        // Check if this position starts a valid scheme
+-        if grid.get_ascii_char_at(pos) == Some('h')
+-            && (matches_sequence(grid, pos, "https://", cols)
+-                || matches_sequence(grid, pos, "http://", cols))
+-        {
+-            return Some(pos);
+-        }
+-
+-        // Move left, stop if we hit the start of the row
+-        pos = pos.move_left(1)?;
+-    }
+-}
+-
+-/// Checks if a sequence of characters matches starting at the given position.
+-fn matches_sequence(grid: &TerminalGrid, start: CursorPosition, seq: &str, cols: u16) -> bool {
+-    let mut pos = start;
+-    let char_count = seq.chars().count();
+-
+-    for (i, ch) in seq.chars().enumerate() {
+-        if grid.get_ascii_char_at(pos) != Some(ch) {
+-            return false;
+-        }
+-        // Move right for next character, but not after the last one
+-        if i < char_count - 1 {
+-            match pos.move_right(1, cols) {
+-                Some(next) => pos = next,
+-                None => return false, // Can't advance but more chars remain
+-            }
+-        }
+-    }
+-    true
+-}
+-
+-/// Scans right from the starting position to find the extent of a URL.
+-///
+-/// Returns the end position and the parenthesis balance (positive means more '(' than ')').
+-fn scan_url_extent(start: CursorPosition, grid: &TerminalGrid, cols: u16) -> (CursorPosition, i32) {
+-    let mut pos = start;
+-    let mut paren_balance: i32 = 0;
+-    let mut last_valid = start;
+-
+-    loop {
+-        match grid.get_ascii_char_at(pos) {
+-            Some(ch) if is_url_char(ch) => {
+-                if ch == '(' {
+-                    paren_balance += 1;
+-                } else if ch == ')' {
+-                    paren_balance -= 1;
+-                }
+-                last_valid = pos;
+-            },
+-            _ => break,
+-        }
+-
+-        match pos.move_right(1, cols) {
+-            Some(next) => pos = next,
+-            None => break,
+-        }
+-    }
+-
+-    (last_valid, paren_balance)
+-}
+-
+-/// Trims trailing punctuation and unbalanced closing parentheses from the URL end.
+-fn trim_url_end(
+-    start: CursorPosition,
+-    mut end: CursorPosition,
+-    mut paren_balance: i32,
+-    grid: &TerminalGrid,
+-) -> CursorPosition {
+-    // Work backwards, trimming trailing punctuation and unbalanced ')'
+-    while end.col > start.col {
+-        let ch = match grid.get_ascii_char_at(end) {
+-            Some(c) => c,
+-            None => break,
+-        };
+-
+-        if is_trailing_punctuation(ch) {
+-            // Trim trailing punctuation
+-            end = end.move_left(1).unwrap_or(end);
+-        } else if ch == ')' && paren_balance < 0 {
+-            // Trim unbalanced closing paren
+-            paren_balance += 1;
+-            end = end.move_left(1).unwrap_or(end);
+-        } else {
+-            break;
+-        }
+-    }
+-
+-    end
+-}
+-
+-#[cfg(test)]
+-mod tests {
+-    use super::*;
+-
+-    #[test]
+-    fn test_is_url_char() {
+-        // Valid URL characters
+-        assert!(is_url_char('a'));
+-        assert!(is_url_char('Z'));
+-        assert!(is_url_char('0'));
+-        assert!(is_url_char('-'));
+-        assert!(is_url_char('.'));
+-        assert!(is_url_char('/'));
+-        assert!(is_url_char('?'));
+-        assert!(is_url_char('='));
+-        assert!(is_url_char('&'));
+-        assert!(is_url_char('('));
+-        assert!(is_url_char(')'));
+-
+-        // Invalid URL characters
+-        assert!(!is_url_char(' '));
+-        assert!(!is_url_char('\n'));
+-        assert!(!is_url_char('<'));
+-        assert!(!is_url_char('>'));
+-        assert!(!is_url_char('"'));
+-    }
+-
+-    #[test]
+-    fn test_is_trailing_punctuation() {
+-        assert!(is_trailing_punctuation('.'));
+-        assert!(is_trailing_punctuation(','));
+-        assert!(is_trailing_punctuation(';'));
+-        assert!(is_trailing_punctuation(':'));
+-        assert!(is_trailing_punctuation('!'));
+-        assert!(is_trailing_punctuation('?'));
+-
+-        assert!(!is_trailing_punctuation('/'));
+-        assert!(!is_trailing_punctuation('-'));
+-        assert!(!is_trailing_punctuation('a'));
+-    }
+-}
+diff --git a/beamterm-renderer/src/wasm.rs b/beamterm-renderer/src/wasm.rs
+index 0eb7cba..c0d39c8 100644
+--- a/beamterm-renderer/src/wasm.rs
++++ b/beamterm-renderer/src/wasm.rs
+@@ -10,7 +10,7 @@ use web_sys::console;
+ 
+ use crate::{
+     gl::{
+-        CellData, CellQuery as RustCellQuery, ContextLossHandler, DynamicFontAtlas, Renderer,
++        CellData, CellQuery as RustCellQuery, DynamicFontAtlas, Renderer,
+         SelectionMode as RustSelectionMode, StaticFontAtlas, TerminalGrid, select,
+     },
+     js::device_pixel_ratio,
+@@ -18,8 +18,6 @@ use crate::{
+         DefaultSelectionHandler, ModifierKeys as RustModifierKeys, MouseSelectOptions,
+         TerminalMouseEvent, TerminalMouseHandler,
+     },
+-    position::CursorPosition,
+-    url::find_url_at_cursor,
+ };
+ 
+ /// JavaScript wrapper for the terminal renderer
+@@ -29,8 +27,6 @@ pub struct BeamtermRenderer {
+     renderer: Renderer,
+     terminal_grid: Rc<RefCell<TerminalGrid>>,
+     mouse_handler: Option<TerminalMouseHandler>,
+-    /// Handles WebGL context loss and restoration
+-    context_loss_handler: Option<ContextLossHandler>,
+     /// Current device pixel ratio for HiDPI rendering
+     current_pixel_ratio: f32,
+ }
+@@ -87,12 +83,6 @@ pub enum MouseEventType {
+     MouseUp,
+     /// Mouse moved
+     MouseMove,
+-    /// Mouse button clicked (pressed and released)
+-    Click,
+-    /// Mouse cursor entered the terminal area
+-    MouseEnter,
+-    /// Mouse cursor left the terminal area
+-    MouseLeave,
+ }
+ 
+ /// Mouse event data with terminal coordinates
+@@ -175,36 +165,6 @@ pub struct CellQuery {
+     inner: RustCellQuery,
+ }
+ 
+-/// Result of URL detection at a terminal position.
+-///
+-/// Contains the detected URL string and a `CellQuery` for highlighting
+-/// or extracting the URL region.
+-#[wasm_bindgen]
+-#[derive(Debug)]
+-pub struct UrlMatch {
+-    /// The detected URL string
+-    url: String,
+-    /// Query for the URL's cell range
+-    query: CellQuery,
+-}
+-
+-#[wasm_bindgen]
+-impl UrlMatch {
+-    /// Returns the detected URL string.
+-    #[wasm_bindgen(getter)]
+-    pub fn url(&self) -> String {
+-        self.url.clone()
+-    }
+-
+-    /// Returns a `CellQuery` for the URL's position in the terminal grid.
+-    ///
+-    /// This can be used for highlighting or extracting text.
+-    #[wasm_bindgen(getter)]
+-    pub fn query(&self) -> CellQuery {
+-        self.query.clone()
+-    }
+-}
+-
+ #[wasm_bindgen]
+ impl CellQuery {
+     /// Create a new cell query with the specified selection mode
+@@ -565,16 +525,10 @@ impl BeamtermRenderer {
+                 .map_err(|e| JsValue::from_str(&format!("Failed to create terminal grid: {e}")))?;
+ 
+         let terminal_grid = Rc::new(RefCell::new(terminal_grid));
+-
+-        let context_loss_handler = ContextLossHandler::new(renderer.canvas()).map_err(|e| {
+-            JsValue::from_str(&format!("Failed to create context loss handler: {e}"))
+-        })?;
+-
+         Ok(BeamtermRenderer {
+             renderer,
+             terminal_grid,
+             mouse_handler: None,
+-            context_loss_handler: Some(context_loss_handler),
+             current_pixel_ratio,
+         })
+     }
+@@ -639,16 +593,10 @@ impl BeamtermRenderer {
+                 .map_err(|e| JsValue::from_str(&format!("Failed to create terminal grid: {e}")))?;
+ 
+         let terminal_grid = Rc::new(RefCell::new(terminal_grid));
+-
+-        let context_loss_handler = ContextLossHandler::new(renderer.canvas()).map_err(|e| {
+-            JsValue::from_str(&format!("Failed to create context loss handler: {e}"))
+-        })?;
+-
+         Ok(BeamtermRenderer {
+             renderer,
+             terminal_grid,
+             mouse_handler: None,
+-            context_loss_handler: Some(context_loss_handler),
+             current_pixel_ratio,
+         })
+     }
+@@ -774,39 +722,6 @@ impl BeamtermRenderer {
+             .to_string()
+     }
+ 
+-    /// Detects an HTTP/HTTPS URL at or around the given cell position.
+-    ///
+-    /// Scans left from the position to find a URL scheme (`http://` or `https://`),
+-    /// then scans right to find the URL end. Handles trailing punctuation and
+-    /// unbalanced parentheses (e.g., Wikipedia URLs).
+-    ///
+-    /// Returns `undefined` if no URL is found at the position.
+-    ///
+-    /// **Note:** Only detects URLs within a single row. URLs that wrap across
+-    /// multiple lines are not supported.
+-    ///
+-    /// # Example
+-    /// ```javascript
+-    /// // In a mouse handler:
+-    /// renderer.setMouseHandler((event) => {
+-    ///     const match = renderer.findUrlAt(event.col, event.row);
+-    ///     if (match) {
+-    ///         console.log("URL found:", match.url);
+-    ///         // match.query can be used for highlighting
+-    ///     }
+-    /// });
+-    /// ```
+-    #[wasm_bindgen(js_name = "findUrlAt")]
+-    pub fn find_url_at(&self, col: u16, row: u16) -> Option<UrlMatch> {
+-        let cursor = CursorPosition::new(col, row);
+-        let grid = self.terminal_grid.borrow();
+-
+-        find_url_at_cursor(cursor, &grid).map(|m| UrlMatch {
+-            url: m.url.to_string(),
+-            query: CellQuery { inner: m.query },
+-        })
+-    }
+-
+     /// Copy text to the system clipboard
+     #[wasm_bindgen(js_name = "copyToClipboard")]
+     pub fn copy_to_clipboard(&self, text: &str) {
+@@ -874,19 +789,6 @@ impl BeamtermRenderer {
+     /// Render the terminal to the canvas
+     #[wasm_bindgen]
+     pub fn render(&mut self) {
+-        // Check for pending rebuild after context restoration
+-        if self.needs_gl_reinit()
+-            && let Err(e) = self.restore_context()
+-        {
+-            console::error_1(&format!("Failed to restore WebGL context: {e:?}").into());
+-            return;
+-        }
+-
+-        // Skip rendering if context is currently lost (waiting for browser restoration)
+-        if self.is_context_lost() {
+-            return;
+-        }
+-
+         // Check for device pixel ratio changes (HiDPI display switching)
+         let raw_dpr = device_pixel_ratio();
+         if (raw_dpr - self.current_pixel_ratio).abs() > f32::EPSILON {
+@@ -901,65 +803,6 @@ impl BeamtermRenderer {
+         self.renderer.end_frame();
+     }
+ 
+-    /// Checks if the WebGL context has been lost.
+-    fn is_context_lost(&self) -> bool {
+-        if let Some(handler) = &self.context_loss_handler {
+-            handler.is_context_lost()
+-        } else {
+-            self.renderer.is_context_lost()
+-        }
+-    }
+-
+-    /// Checks if the terminal needs to restore GPU resources after a context loss.
+-    fn needs_gl_reinit(&self) -> bool {
+-        self.context_loss_handler
+-            .as_ref()
+-            .is_some_and(ContextLossHandler::context_pending_rebuild)
+-    }
+-
+-    /// Restores all GPU resources after a WebGL context loss.
+-    fn restore_context(&mut self) -> Result<(), JsValue> {
+-        self.renderer
+-            .restore_context()
+-            .map_err(|e| JsValue::from_str(&format!("Failed to restore renderer context: {e}")))?;
+-
+-        let gl = self.renderer.gl();
+-
+-        self.terminal_grid
+-            .borrow_mut()
+-            .recreate_atlas_texture(gl)
+-            .map_err(|e| JsValue::from_str(&format!("Failed to recreate atlas texture: {e}")))?;
+-
+-        self.terminal_grid
+-            .borrow_mut()
+-            .recreate_resources(gl)
+-            .map_err(|e| JsValue::from_str(&format!("Failed to recreate grid resources: {e}")))?;
+-
+-        self.terminal_grid
+-            .borrow_mut()
+-            .flush_cells(gl)
+-            .map_err(|e| JsValue::from_str(&format!("Failed to flush cells: {e}")))?;
+-
+-        if let Some(handler) = &self.context_loss_handler {
+-            handler.clear_context_rebuild_needed();
+-        }
+-
+-        // Re-apply current pixel ratio after context restoration
+-        // (display may have changed during context loss)
+-        let dpr = device_pixel_ratio();
+-        if (dpr - self.current_pixel_ratio).abs() > f32::EPSILON {
+-            self.handle_pixel_ratio_change(dpr)?;
+-        } else {
+-            // Even if DPR unchanged, renderer state was reset - reapply it
+-            self.renderer.set_pixel_ratio(dpr);
+-            let (w, h) = self.renderer.logical_size();
+-            self.renderer.resize(w, h);
+-        }
+-
+-        console::log_1(&"WebGL context restored successfully".into());
+-        Ok(())
+-    }
+-
+     /// Handles a change in device pixel ratio.
+     ///
+     /// Callers should verify the ratio has changed before calling this method.
+@@ -983,7 +826,7 @@ impl BeamtermRenderer {
+         self.resize(w, h)
+     }
+ 
+-    /// Resize the terminal to fit new canvas dimensions
++    /// Resize the terminal to fit new canvas dimensions (CSS pixels)
+     #[wasm_bindgen]
+     pub fn resize(&mut self, width: i32, height: i32) -> Result<(), JsValue> {
+         self.renderer.resize(width, height);
+@@ -1000,6 +843,54 @@ impl BeamtermRenderer {
+         Ok(())
+     }
+ 
++    /// Set the background color for canvas padding areas.
++    ///
++    /// When the canvas dimensions don't align perfectly with the terminal cell grid,
++    /// there may be unused pixels around the edges. This color fills those padding
++    /// areas. Set this to match your terminal background color.
++    ///
++    /// # Arguments
++    /// * `color` - RGB color as 24-bit integer (0xRRGGBB)
++    #[wasm_bindgen(js_name = "setCanvasPaddingColor")]
++    pub fn set_canvas_padding_color(&mut self, color: u32) {
++        let r = ((color >> 16) & 0xFF) as f32 / 255.0;
++        let g = ((color >> 8) & 0xFF) as f32 / 255.0;
++        let b = (color & 0xFF) as f32 / 255.0;
++        self.renderer.set_canvas_padding_color(r, g, b);
++    }
++
++    /// Resize the terminal using exact physical pixel dimensions.
++    ///
++    /// Use this method for precise control over canvas dimensions on HiDPI displays
++    /// to prevent padding/gaps caused by CSS-to-physical conversion rounding.
++    ///
++    /// # Arguments
++    /// * `physical_width` - Canvas width in physical (device) pixels
++    /// * `physical_height` - Canvas height in physical (device) pixels
++    /// * `css_width` - CSS width for layout (what the user sees)
++    /// * `css_height` - CSS height for layout
++    #[wasm_bindgen(js_name = "resizePhysical")]
++    pub fn resize_physical(
++        &mut self,
++        physical_width: i32,
++        physical_height: i32,
++        css_width: f64,
++        css_height: f64,
++    ) -> Result<(), JsValue> {
++        self.renderer
++            .resize_physical(physical_width, physical_height, css_width, css_height);
++
++        let gl = self.renderer.gl();
++        self.terminal_grid
++            .borrow_mut()
++            .resize(gl, (physical_width, physical_height), self.current_pixel_ratio)
++            .map_err(|e| JsValue::from_str(&format!("Failed to resize: {e}")))?;
++
++        self.update_mouse_handler_metrics();
++
++        Ok(())
++    }
++
+     /// Updates the mouse handler with current grid metrics (cell size and dimensions).
+     fn update_mouse_handler_metrics(&mut self) {
+         if let Some(mouse_handler) = &mut self.mouse_handler {
+@@ -1134,9 +1025,6 @@ impl From<TerminalMouseEvent> for MouseEvent {
+             RustMouseEventType::MouseDown => MouseEventType::MouseDown,
+             RustMouseEventType::MouseUp => MouseEventType::MouseUp,
+             RustMouseEventType::MouseMove => MouseEventType::MouseMove,
+-            RustMouseEventType::Click => MouseEventType::Click,
+-            RustMouseEventType::MouseEnter => MouseEventType::MouseEnter,
+-            RustMouseEventType::MouseLeave => MouseEventType::MouseLeave,
+         };
+ 
+         MouseEvent {
+diff --git a/examples/canvas_waves/src/main.rs b/examples/canvas_waves/src/main.rs
+index d0e3f22..8cb870b 100644
+--- a/examples/canvas_waves/src/main.rs
++++ b/examples/canvas_waves/src/main.rs
+@@ -4,7 +4,7 @@ mod wave_effect;
+ 
+ use ratzilla::ratatui::Terminal;
+ use ratzilla::backend::webgl2::{FontAtlasData, WebGl2Backend, WebGl2BackendOptions};
+-use ratzilla::{FontAtlasConfig, WebRenderer};
++use ratzilla::WebRenderer;
+ use tachyonfx::{EffectRenderer, IntoEffect};
+ use wave_effect::WaveInterference;
+ 
+@@ -29,7 +29,7 @@ fn main() -> std::io::Result<()> {
+ 
+     let backend = WebGl2Backend::new_with_options(
+         WebGl2BackendOptions::new()
+-            .font_atlas_config(FontAtlasConfig::Static(font_atlas))
++            .font_atlas(font_atlas)
+             .measure_performance(true)
+             .grid_id("container")
+             .enable_console_debug_api()
+diff --git a/examples/canvas_waves/src/wave_effect.rs b/examples/canvas_waves/src/wave_effect.rs
+index 4c026d7..ebae23d 100644
+--- a/examples/canvas_waves/src/wave_effect.rs
++++ b/examples/canvas_waves/src/wave_effect.rs
+@@ -92,7 +92,9 @@ impl Shader for WaveInterference {
+         let elapsed_cos = elapsed.cos();
+ 
+         // apply effect to each cell in the area
+-        self.cell_iter(buf, area).for_each_cell(|pos, cell| {
++        let cell_iter = self.cell_iter(buf, area);
++
++        cell_iter.for_each_cell(|pos, cell| {
+             let pos = (pos.x as f32, pos.y as f32);
+             let normalized = calc_wave_amplitude(elapsed, pos, &waves);
+             assert!(
+@@ -133,7 +135,8 @@ impl Shader for WaveInterference {
+     }
+ 
+     fn cell_filter(&self) -> Option<&CellFilter> {
+-        self.cell_filter.as_ref().map(|f| f.filter_ref())
++        // self.cell_filter.as_ref().map(|f| f.filter_ref())
++        None
+     }
+ 
+     fn filter_processor(&self) -> Option<&FilterProcessor> {
+diff --git a/js/examples/selection-demo/main.js b/js/examples/selection-demo/main.js
+index 21bb553..0e23273 100644
+--- a/js/examples/selection-demo/main.js
++++ b/js/examples/selection-demo/main.js
+@@ -103,9 +103,6 @@ class SelectionDemo {
+             this.renderer.resize(canvas.width, canvas.height);
+             this.size = this.renderer.terminalSize();
+ 
+-            // Set up URL click handler (works independently of selection)
+-            this.setupUrlClickHandler();
+-
+             // Render initial content
+             this.renderSampleContent();
+ 
+@@ -132,64 +129,6 @@ class SelectionDemo {
+         });
+     }
+ 
+-    setupUrlClickHandler() {
+-        // Click handler for opening URLs (only on actual clicks, not drags)
+-        const canvas = document.getElementById('terminal');
+-        let mouseDownPos = null;
+-        let lastHoveredUrl = null;
+-
+-        canvas.addEventListener('mousedown', (e) => {
+-            mouseDownPos = { x: e.clientX, y: e.clientY };
+-        });
+-
+-        canvas.addEventListener('click', (e) => {
+-            if (!this.renderer || !mouseDownPos || !this.selectionEnabled) return;
+-
+-            // Check if this was a drag (mouse moved more than 5px)
+-            const dx = e.clientX - mouseDownPos.x;
+-            const dy = e.clientY - mouseDownPos.y;
+-            const wasDrag = Math.sqrt(dx * dx + dy * dy) > 5;
+-
+-            if (wasDrag) return; // Don't open URL if user was selecting text
+-
+-            const rect = canvas.getBoundingClientRect();
+-            const cellSize = this.renderer.cellSize();
+-            const col = Math.floor((e.clientX - rect.left) / cellSize.width);
+-            const row = Math.floor((e.clientY - rect.top) / cellSize.height);
+-
+-            const urlMatch = this.renderer.findUrlAt(col, row);
+-            if (urlMatch) {
+-                console.log(`🔗 Opening URL: ${urlMatch.url}`);
+-                window.open(urlMatch.url, '_blank');
+-            }
+-        });
+-
+-        // Hover feedback for URLs (only when selection is enabled)
+-        canvas.addEventListener('mousemove', (e) => {
+-            if (!this.renderer || !this.selectionEnabled) return;
+-
+-            const rect = canvas.getBoundingClientRect();
+-            const cellSize = this.renderer.cellSize();
+-            const col = Math.floor((e.clientX - rect.left) / cellSize.width);
+-            const row = Math.floor((e.clientY - rect.top) / cellSize.height);
+-
+-            const urlMatch = this.renderer.findUrlAt(col, row);
+-            if (urlMatch) {
+-                if (lastHoveredUrl !== urlMatch.url) {
+-                    lastHoveredUrl = urlMatch.url;
+-                    canvas.style.cursor = 'pointer';
+-                    this.updateStatus(`🔗 ${urlMatch.url}`);
+-                }
+-            } else if (lastHoveredUrl) {
+-                lastHoveredUrl = null;
+-                canvas.style.cursor = 'default';
+-                const modeStr = this.selectionModeEl.value;
+-                const modifierDesc = this.getModifierDescription();
+-                this.updateStatus(`Selection enabled (${modeStr} mode) - ${modifierDesc} to select`);
+-            }
+-        });
+-    }
+-
+     getEventTypeString(eventType) {
+         // MouseEventType enum values
+         switch(eventType) {
+@@ -220,7 +159,7 @@ class SelectionDemo {
+             this.disableBtn.disabled = false;
+ 
+             const modeStr = this.selectionModeEl.value;
+-            this.updateStatus(`Selection enabled (${modeStr} mode) - ${modifierDesc} to select`);
++            this.updateStatus(`Selection enabled (${modeStr} mode) - ${modifierDesc} and drag to select text`);
+ 
+             console.log('✅ Selection enabled with mode:', modeStr, 'modifiers:', modifierDesc);
+         } catch (error) {
+@@ -285,11 +224,6 @@ class SelectionDemo {
+             "}",
+             "",
+             "selectText(SelectionMode.Linear);",
+-            "",
+-            "Clickable URLs (when selection is enabled):",
+-            "• Repository: https://github.com/junkdog/beamterm",
+-            "• Rust crate: https://crates.io/crates/beamterm-renderer",
+-            "• Wikipedia: https://en.wikipedia.org/wiki/WebGL",
+             ""
+         ];
+ 
+@@ -302,13 +236,10 @@ class SelectionDemo {
+             let lineStyle = style().fg(0xc0caf5);
+ 
+             // Color code different types of content
+-            if (line.startsWith("🖱️") || line.startsWith("Try ") || line.startsWith("Sample content") || line.startsWith("Clickable URLs")) {
++            if (line.startsWith("🖱️") || line.startsWith("Try ") || line.startsWith("Sample content")) {
+                 lineStyle = style().bold().fg(0x7aa2f7);
+             } else if (line.startsWith("•") || line.startsWith("┌") || line.startsWith("│") || line.startsWith("├") || line.startsWith("└")) {
+                 lineStyle = style().fg(0x9ece6a);
+-            } else if (line.includes("https://")) {
+-                // URLs get underline styling
+-                lineStyle = style().underline().fg(0x73daca);
+             } else if (line.includes("function") || line.includes("renderer.") || line.includes("console.")) {
+                 lineStyle = style().fg(0x7dcfff);
+             } else if (line.startsWith("    ")) {
+@@ -378,7 +309,6 @@ async function main() {
+ 
+         console.log('✅ Selection demo ready!');
+         console.log('💡 Click "Enable Selection" and try both Linear and Block modes');
+-        console.log('🔗 Click on URLs to open them (when selection is enabled)');
+         
+         demo.startAnimation();
+ 
+diff --git a/js/examples/vite/index.html b/js/examples/vite/index.html
+index 7fe6235..65672d0 100644
+--- a/js/examples/vite/index.html
++++ b/js/examples/vite/index.html
+@@ -70,11 +70,6 @@
+             background: #2a2f45;
+         }
+ 
+-        button.context-lost {
+-            border-color: #f7768e;
+-            background: #2d202a;
+-        }
+-
+         input[type="range"] {
+             width: 120px;
+             padding: 4px;
+@@ -135,9 +130,6 @@
+             <span class="size-value" id="size-value">16px</span>
+         </div>
+         <span class="status" id="status">Atlas updated!</span>
+-        <div class="control-group">
+-            <button id="context-loss-btn" title="Simulate WebGL context loss/recovery">💥 Context Loss</button>
+-        </div>
+     </div>
+     <canvas id="terminal"></canvas>
+     <div class="info">
+diff --git a/js/examples/vite/src/main.ts b/js/examples/vite/src/main.ts
+index 5162778..ac395d3 100644
+--- a/js/examples/vite/src/main.ts
++++ b/js/examples/vite/src/main.ts
+@@ -343,59 +343,6 @@ async function main() {
+             resizeAfterAtlasChange();
+         }, 100);
+     });
+-
+-    // WebGL context loss simulation
+-    const contextLossBtn = document.getElementById('context-loss-btn') as HTMLButtonElement;
+-    let isContextLost = false;
+-    let loseContextExt: WEBGL_lose_context | null = null;
+-
+-    contextLossBtn.addEventListener('click', () => {
+-        const gl = canvas.getContext('webgl2');
+-        if (!gl) {
+-            console.error('Failed to get WebGL2 context');
+-            return;
+-        }
+-
+-        if (!loseContextExt) {
+-            loseContextExt = gl.getExtension('WEBGL_lose_context');
+-            if (!loseContextExt) {
+-                console.error('WEBGL_lose_context extension not available');
+-                contextLossBtn.disabled = true;
+-                contextLossBtn.textContent = '❌ Not supported';
+-                return;
+-            }
+-        }
+-
+-        if (!isContextLost) {
+-            // Lose context
+-            loseContextExt.loseContext();
+-            isContextLost = true;
+-            contextLossBtn.textContent = '🔄 Restore Context';
+-            contextLossBtn.classList.add('context-lost');
+-            console.log('WebGL context lost (simulated)');
+-        } else {
+-            // Restore context
+-            loseContextExt.restoreContext();
+-            isContextLost = false;
+-            contextLossBtn.textContent = '💥 Context Loss';
+-            contextLossBtn.classList.remove('context-lost');
+-            console.log('WebGL context restored (simulated)');
+-        }
+-    });
+-
+-    // Listen for context events to update button state
+-    canvas.addEventListener('webglcontextlost', (e) => {
+-        e.preventDefault();
+-        isContextLost = true;
+-        contextLossBtn.textContent = '🔄 Restore Context';
+-        contextLossBtn.classList.add('context-lost');
+-    });
+-
+-    canvas.addEventListener('webglcontextrestored', () => {
+-        isContextLost = false;
+-        contextLossBtn.textContent = '💥 Context Loss';
+-        contextLossBtn.classList.remove('context-lost');
+-    });
+ }
+ 
+ function calculateCanvasSize(): { width: number; height: number } {
+diff --git a/js/package-lock.json b/js/package-lock.json
+index 6cee819..4f9c035 100644
+--- a/js/package-lock.json
++++ b/js/package-lock.json
+@@ -1,12 +1,12 @@
+ {
+   "name": "@beamterm/renderer",
+-  "version": "0.14.0",
++  "version": "0.13.0",
+   "lockfileVersion": 2,
+   "requires": true,
+   "packages": {
+     "": {
+       "name": "@beamterm/renderer",
+-      "version": "0.14.0",
++      "version": "0.13.0",
+       "license": "MIT",
+       "devDependencies": {
+         "@playwright/test": "^1.40.0",
+diff --git a/js/package.json b/js/package.json
+index 6ed3503..464c11b 100644
+--- a/js/package.json
++++ b/js/package.json
+@@ -1,6 +1,6 @@
+ {
+   "name": "@beamterm/renderer",
+-  "version": "0.14.0",
++  "version": "0.13.0",
+   "description": "High-performance WebGL2 terminal renderer with sub-millisecond render times",
+   "author": "Adrian Papari",
+   "license": "MIT",
